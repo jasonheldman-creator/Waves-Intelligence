@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import altair as alt
 
 # ---------------------------------------------------------
 # Page config
@@ -92,11 +91,94 @@ WAVES = {
         "csv_hint": "SP500_PORTFOLIO_FINAL.csv export",
         "wave_type": "AI-Managed Wave",
     },
-    # Add other waves as before...
+    "us_growth": {
+        "label": "US Growth Wave",
+        "benchmark": "Russell 1000 Growth",
+        "csv_hint": "US_GROWTH_WAVE.csv",
+        "wave_type": "AI-Managed Wave",
+    },
+    "us_value": {
+        "label": "US Value Wave",
+        "benchmark": "Russell 1000 Value",
+        "csv_hint": "US_VALUE_WAVE.csv",
+        "wave_type": "AI-Managed Wave",
+    },
+    "smcap_growth": {
+        "label": "Small Cap Growth Wave",
+        "benchmark": "Russell 2000 Growth",
+        "csv_hint": "SMALL_CAP_GROWTH_WAVE.csv",
+        "wave_type": "AI-Managed Wave",
+    },
+    "sm_mid_growth": {
+        "label": "Small-Mid Cap Growth Wave",
+        "benchmark": "SMID Growth Composite",
+        "csv_hint": "SMID_GROWTH_WAVE.csv",
+        "wave_type": "AI-Managed Wave",
+    },
+    "income": {
+        "label": "Equity Income Wave",
+        "benchmark": "US Dividend Composite",
+        "csv_hint": "EQUITY_INCOME_WAVE.csv",
+        "wave_type": "Income Wave",
+    },
+    "future_power": {
+        "label": "Future Power & Energy Wave",
+        "benchmark": "Clean Energy / Infrastructure",
+        "csv_hint": "FUTURE_POWER_WAVE.csv",
+        "wave_type": "Thematic Wave",
+    },
+    "tech_leaders": {
+        "label": "Tech Leaders Wave",
+        "benchmark": "NASDAQ 100",
+        "csv_hint": "TECH_LEADERS_WAVE.csv",
+        "wave_type": "AI-Managed Wave",
+    },
+    "ai_wave": {
+        "label": "AI & Automation Wave",
+        "benchmark": "AI / Robotics Composite",
+        "csv_hint": "AI_WAVE.csv",
+        "wave_type": "Thematic Wave",
+    },
+    "quality_core": {
+        "label": "Quality Core Wave",
+        "benchmark": "Global Quality Composite",
+        "csv_hint": "QUALITY_CORE_WAVE.csv",
+        "wave_type": "Core Wave",
+    },
+    "diversified_us": {
+        "label": "US Core Equity Wave",
+        "benchmark": "Total US Market",
+        "csv_hint": "US_CORE_EQUITY_WAVE.csv",
+        "wave_type": "Core Wave",
+    },
+    "intl_developed": {
+        "label": "International Developed Wave",
+        "benchmark": "MSCI EAFE",
+        "csv_hint": "INTL_DEV_WAVE.csv",
+        "wave_type": "Core Wave",
+    },
+    "emerging": {
+        "label": "Emerging Markets Wave",
+        "benchmark": "MSCI EM",
+        "csv_hint": "EM_WAVE.csv",
+        "wave_type": "Core Wave",
+    },
+    "dividend_growth": {
+        "label": "Dividend Growth Wave",
+        "benchmark": "US Dividend Growth Index",
+        "csv_hint": "DIVIDEND_GROWTH_WAVE.csv",
+        "wave_type": "Income Wave",
+    },
+    "sector_rotation": {
+        "label": "Sector Rotation Wave",
+        "benchmark": "Sector-Neutral Composite",
+        "csv_hint": "SECTOR_ROTATION_WAVE.csv",
+        "wave_type": "Tactical Wave",
+    },
 }
 
 # ---------------------------------------------------------
-# Sidebar: wave selector + CSV upload
+# Sidebar: control panel (Step 1 – no SmartSafe, no toggles)
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown(
@@ -106,6 +188,7 @@ with st.sidebar:
     )
     st.caption("Institutional Wave Console (alpha demo)")
 
+    # Wave selector
     wave_label_to_key = {cfg["label"]: key for key, cfg in WAVES.items()}
     chosen_label = st.selectbox(
         "Select Wave",
@@ -128,7 +211,7 @@ with st.sidebar:
     st.caption(
         f"Expected columns (any order): **Ticker, Price, Dollar_Alloc** "
         f"(optional: Weight_pct, Index_Weight).<br>"
-        f"Suggested export: `{{wave_cfg['csv_hint']}}`",
+        f"Suggested export: `{wave_cfg['csv_hint']}`",
         unsafe_allow_html=True,
     )
 
@@ -140,39 +223,176 @@ with st.sidebar:
     )
 
 # ---------------------------------------------------------
-# Validate uploaded CSV
+# Main header
+# ---------------------------------------------------------
+st.markdown(
+    "<h1 style='margin-bottom:0.1rem;'>WAVES INTELLIGENCE™</h1>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    f"<span style='color:{TEXT_MUTED};font-size:0.9rem;'>"
+    f"{wave_cfg['label']} — Institutional Portfolio Console</span>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    f"<span style='color:{ACCENT_SOFT};font-size:0.8rem;font-weight:500;'>"
+    f"AI-Managed Wave • Real-time demo • CSV-driven • No external data calls</span>",
+    unsafe_allow_html=True,
+)
+st.markdown("")
+
+# ---------------------------------------------------------
+# If no portfolio file yet, show instructions and stop
 # ---------------------------------------------------------
 if portfolio_file is None:
-    st.info("Upload the latest Wave snapshot CSV in the sidebar to continue.")
+    st.info(
+        "Upload the latest Wave snapshot CSV in the sidebar to render the console. "
+        "Use your Google Sheets export for the selected Wave."
+    )
     st.stop()
 
+# ---------------------------------------------------------
+# Load & normalize data (no charts yet – just metrics & preview)
+# ---------------------------------------------------------
 try:
     raw_df = pd.read_csv(portfolio_file)
-    raw_df.columns = [c.strip().replace(" ", "_") for c in raw_df.columns]  # Normalize column names
 except Exception as e:
-    st.error(f"Error reading your CSV file: {e}")
+    st.error(f"Error reading CSV: {e}")
     st.stop()
 
-# Required columns
-REQUIRED_COLUMNS = ["Ticker", "Price", "Dollar_Alloc"]
-missing_columns = [col for col in REQUIRED_COLUMNS if col not in raw_df.columns]
+# Normalize column names
+raw_df.columns = [c.strip().replace(" ", "_") for c in raw_df.columns]
+lower_cols = {c.lower(): c for c in raw_df.columns}
 
-if missing_columns:
-    st.error(f"Your CSV is missing the following required columns: {', '.join(missing_columns)}.")
+
+def pick(*candidates):
+    """Pick the first matching column name from candidates (case-insensitive)."""
+    for cand in candidates:
+        if cand.lower() in lower_cols:
+            return lower_cols[cand.lower()]
+    return None
+
+
+ticker_col = pick("Ticker")
+price_col = pick("Price", "Last")
+dollar_col = pick("Dollar_Alloc", "DollarAlloc", "Dollar_Value")
+weight_col = pick("Weight_pct", "Weight", "Weight_%", "WeightPct")
+
+missing_core = [name for name, col in
+                [("Ticker", ticker_col), ("Price", price_col), ("Dollar_Alloc", dollar_col)]
+                if col is None]
+
+if missing_core:
+    st.error(
+        "CSV is missing required columns: "
+        + ", ".join(missing_core)
+        + ". Required: Ticker, Price, Dollar_Alloc.",
+    )
     st.stop()
 
-# Ensure numeric columns
-for num_col in ["Price", "Dollar_Alloc"]:
-    raw_df[num_col] = pd.to_numeric(raw_df[num_col], errors="coerce")
+df = raw_df.rename(
+    columns={
+        ticker_col: "Ticker",
+        price_col: "Price",
+        dollar_col: "Dollar_Alloc",
+        **({weight_col: "Weight_pct"} if weight_col else {}),
+    }
+)
 
-if raw_df.isnull().any(axis=None):
-    st.warning("Some numeric values in your CSV file could not be interpreted.")
+# Ensure numeric
+for col in ["Price", "Dollar_Alloc", "Weight_pct"]:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
-# Normalize weights
-total_nav = raw_df["Dollar_Alloc"].sum()
-raw_df["Weight_pct"] = raw_df["Dollar_Alloc"] / total_nav * 100.0
-...
+# De-duplicate tickers and recompute weights
+group_cols = ["Ticker"]
+agg_dict = {"Price": "last", "Dollar_Alloc": "sum"}
+df = df.groupby(group_cols, as_index=False).agg(agg_dict)
+
+total_nav = df["Dollar_Alloc"].sum()
+if total_nav <= 0:
+    st.error("Total NAV from Dollar_Alloc is non-positive. Check your CSV.")
+    st.stop()
+
+df["Weight_pct"] = df["Dollar_Alloc"] / total_nav * 100.0
+
+num_holdings = df["Ticker"].nunique()
+largest_position = df["Weight_pct"].max()
+top10_conc = df.nlargest(10, "Weight_pct")["Weight_pct"].sum()
 
 # ---------------------------------------------------------
-# TODO: Add visualization and metric updates from your code!
+# Metric row (Step 1)
 # ---------------------------------------------------------
+m1, m2, m3, m4 = st.columns(4)
+with m1:
+    st.markdown(
+        f"<div class='metric-card'>"
+        f"<div class='metric-label'>TOTAL NAV</div>"
+        f"<div class='metric-value'>${total_nav:,.0f}</div>"
+        f"<div class='metric-sub'>Snapshot from uploaded CSV</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+with m2:
+    st.markdown(
+        f"<div class='metric-card'>"
+        f"<div class='metric-label'># OF HOLDINGS</div>"
+        f"<div class='metric-value'>{num_holdings:,}</div>"
+        f"<div class='metric-sub'>Unique securities in this Wave</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+with m3:
+    st.markdown(
+        f"<div class='metric-card'>"
+        f"<div class='metric-label'>LARGEST POSITION</div>"
+        f"<div class='metric-value'>{largest_position:0.2f}%</div>"
+        f"<div class='metric-sub'>Single-name weight</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+with m4:
+    st.markdown(
+        f"<div class='metric-card'>"
+        f"<div class='metric-label'>TOP 10 CONCENTRATION</div>"
+        f"<div class='metric-value'>{top10_conc:0.2f}%</div>"
+        f"<div class='metric-sub'>Sum of top 10 weights</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+st.markdown("")
+
+# ---------------------------------------------------------
+# Simple holdings preview (Step 1 – no charts yet)
+# ---------------------------------------------------------
+st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+st.markdown("<div class='section-title'>Holdings preview</div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='section-caption'>Top 25 holdings by dollar allocation.</div>",
+    unsafe_allow_html=True,
+)
+
+preview = df.sort_values("Dollar_Alloc", ascending=False).head(25).copy()
+preview_display = preview[["Ticker", "Price", "Dollar_Alloc", "Weight_pct"]].copy()
+preview_display["Price"] = preview_display["Price"].round(2)
+preview_display["Dollar_Alloc"] = preview_display["Dollar_Alloc"].round(0)
+preview_display["Weight_pct"] = preview_display["Weight_pct"].round(3)
+
+st.dataframe(
+    preview_display.rename(
+        columns={"Dollar_Alloc": "Dollar_Alloc($)", "Weight_pct": "Weight_%"}
+    ),
+    use_container_width=True,
+)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# Footer
+# ---------------------------------------------------------
+st.markdown("---")
+st.caption(
+    "Upload-based demo • Data source: Wave CSV exports • "
+    "WAVES Intelligence™ • Internal demo only (not investment advice)."
+)
