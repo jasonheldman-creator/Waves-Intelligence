@@ -4,6 +4,61 @@ import numpy as np
 import altair as alt
 
 # ---------------------------------------------------------
+# Cached helper functions for performance
+# ---------------------------------------------------------
+@st.cache_data
+def normalize_columns(df):
+    """Normalize column names to use underscores instead of spaces/dashes."""
+    # Create a copy to avoid modifying the original DataFrame
+    df = df.copy()
+    df.columns = [c.strip().replace(" ", "_").replace("-", "_") for c in df.columns]
+    return df
+
+@st.cache_data
+def compute_dataframe(df, ticker_col, price_col, dollar_col, weight_col, index_weight_col):
+    """Process and aggregate dataframe by ticker with caching.
+    
+    Cache key includes all parameters, so different column mappings will be cached separately.
+    Returns the processed dataframe and total NAV.
+    """
+    # Create a copy to avoid modifying the cached input
+    df = df.copy()
+    
+    # Build working dataframe with standard names
+    rename_dict = {
+        ticker_col: "Ticker",
+        price_col: "Price",
+        dollar_col: "Dollar_Alloc",
+    }
+    if weight_col is not None:
+        rename_dict[weight_col] = "Weight_pct"
+    if index_weight_col is not None:
+        rename_dict[index_weight_col] = "Index_Weight"
+    
+    df = df.rename(columns=rename_dict)
+    
+    # Ensure numeric types
+    for col in ["Price", "Dollar_Alloc", "Weight_pct", "Index_Weight"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    
+    # Group by ticker (remove duplicate rows per name)
+    group_cols = ["Ticker"]
+    agg_dict = {"Price": "last", "Dollar_Alloc": "sum"}
+    if "Weight_pct" in df.columns:
+        agg_dict["Weight_pct"] = "sum"
+    if "Index_Weight" in df.columns:
+        agg_dict["Index_Weight"] = "mean"
+    
+    df = df.groupby(group_cols, as_index=False).agg(agg_dict)
+    
+    # Recompute weight_pct from Dollar_Alloc to be consistent
+    total_nav = df["Dollar_Alloc"].sum()
+    df["Weight_pct"] = df["Dollar_Alloc"] / total_nav * 100.0
+    
+    return df, total_nav
+
+# ---------------------------------------------------------
 # Page config
 # ---------------------------------------------------------
 st.set_page_config(
@@ -287,8 +342,21 @@ st.markdown(
 )
 st.markdown("")
 
+# ---------------------------------------------------------
+# Session state initialization for validation
+# ---------------------------------------------------------
+if "validated" not in st.session_state:
+    st.session_state.validated = False
+if "last_file_id" not in st.session_state:
+    st.session_state.last_file_id = None
+if "raw_df" not in st.session_state:
+    st.session_state.raw_df = None
+
 # If no CSV yet, just show instructions and stop
 if uploaded_file is None:
+    st.session_state.validated = False
+    st.session_state.last_file_id = None
+    st.session_state.raw_df = None
     st.info(
         "Upload the latest Wave snapshot CSV in the sidebar to render the console. "
         "Use your Google Sheets export for the selected Wave."
@@ -296,18 +364,36 @@ if uploaded_file is None:
     st.stop()
 
 # ---------------------------------------------------------
-# Load & normalize data  (SAFE – only runs once CSV exists)
+# Load & normalize data with validation state
 # ---------------------------------------------------------
-try:
-    raw_df = pd.read_csv(uploaded_file)
-except Exception as e:
-    st.error(f"Error reading CSV: {e}")
-    st.stop()
+# Create a unique identifier for the uploaded file
+# Note: Using (name, size) is sufficient because:
+# 1. Streamlit creates new UploadedFile objects when files change
+# 2. User uploads are session-specific (no cross-session collision risk)
+# 3. Same-name-same-size collisions within a session are extremely rare
+# For production with higher security needs, consider adding file hash
+current_file_id = (uploaded_file.name, uploaded_file.size)
 
-# Normalize column names (lowercase & underscores)
-raw_df.columns = [
-    c.strip().replace(" ", "_").replace("-", "_") for c in raw_df.columns
-]
+# Only read and process if it's a new file
+if st.session_state.last_file_id != current_file_id:
+    st.session_state.validated = False
+    st.session_state.last_file_id = current_file_id
+    
+    try:
+        # Reset stream position before reading
+        uploaded_file.seek(0)
+        raw_df = pd.read_csv(uploaded_file)
+    except Exception as e:
+        st.error(f"Error reading CSV: {e}")
+        st.stop()
+    
+    # Normalize column names (cached function)
+    raw_df = normalize_columns(raw_df)
+    # Store in session state for reuse
+    st.session_state.raw_df = raw_df
+else:
+    # Reuse the dataframe from session state - no file I/O
+    raw_df = st.session_state.raw_df
 
 lower_cols = {c.lower(): c for c in raw_df.columns}
 
@@ -345,39 +431,17 @@ if missing_requirements:
     )
     st.stop()
 
-# Build working dataframe with standard names
-df = raw_df.rename(
-    columns={
-        ticker_col: "Ticker",
-        price_col: "Price",
-        dollar_col: "Dollar_Alloc",
-        **({weight_col: "Weight_pct"} if weight_col else {}),
-        **({index_weight_col: "Index_Weight"} if index_weight_col else {}),
-    }
-)
+# Process dataframe using cached function
+df, total_nav = compute_dataframe(raw_df, ticker_col, price_col, dollar_col, weight_col, index_weight_col)
 
-# Ensure numeric types
-for col in ["Price", "Dollar_Alloc", "Weight_pct", "Index_Weight"]:
-    if col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-# Group by ticker (remove duplicate rows per name)
-group_cols = ["Ticker"]
-agg_dict = {"Price": "last", "Dollar_Alloc": "sum"}
-if "Weight_pct" in df.columns:
-    agg_dict["Weight_pct"] = "sum"
-if "Index_Weight" in df.columns:
-    agg_dict["Index_Weight"] = "mean"
-
-df = df.groupby(group_cols, as_index=False).agg(agg_dict)
-
-# Recompute weight_pct from Dollar_Alloc to be consistent
-total_nav = df["Dollar_Alloc"].sum()
+# Validate total NAV
 if total_nav <= 0:
     st.error("Total NAV calculated from Dollar_Alloc is not positive. Check your CSV.")
     st.stop()
 
-df["Weight_pct"] = df["Dollar_Alloc"] / total_nav * 100.0
+# Mark as validated after successful processing
+if not st.session_state.validated:
+    st.session_state.validated = True
 
 num_holdings = df["Ticker"].nunique()
 largest_position = df["Weight_pct"].max()
@@ -416,6 +480,14 @@ else:
 # Chart helper for dark mode
 # ---------------------------------------------------------
 def base_chart(data: pd.DataFrame) -> alt.Chart:
+    """Create base Altair chart with consistent dark mode styling.
+    
+    Args:
+        data: DataFrame to use for the chart
+        
+    Returns:
+        Configured Altair Chart object with dark theme applied
+    """
     return (
         alt.Chart(data, background=DARK_BG)
         .configure_axis(
