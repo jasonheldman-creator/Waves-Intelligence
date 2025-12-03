@@ -367,8 +367,11 @@ if uploaded_file is None:
 # Load & normalize data with validation state
 # ---------------------------------------------------------
 # Create a unique identifier for the uploaded file
-# Note: Using (name, size) is sufficient because Streamlit creates new upload objects
-# when files change, and same-name-same-size collisions are extremely rare in practice
+# Note: Using (name, size) is sufficient because:
+# 1. Streamlit creates new UploadedFile objects when files change
+# 2. User uploads are session-specific (no cross-session collision risk)
+# 3. Same-name-same-size collisions within a session are extremely rare
+# For production with higher security needs, consider adding file hash
 current_file_id = (uploaded_file.name, uploaded_file.size)
 
 # Only read and process if it's a new file
