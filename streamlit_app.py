@@ -467,32 +467,22 @@ else:
     tilt_text = "Neutral style tilt — pure Wave engine."
 
 # ---------------------------------------------------------
-# Chart helper for dark mode (cached for performance)
+# Chart helper for dark mode
 # ---------------------------------------------------------
-@st.cache_data
-def get_chart_config():
-    """Return chart configuration dict for reuse."""
-    return {
-        "background": DARK_BG,
-        "axis": {
-            "labelColor": TEXT_MUTED,
-            "titleColor": TEXT_MUTED,
-            "gridColor": "#111827",
-        },
-        "view": {"strokeOpacity": 0},
-        "legend": {
-            "labelColor": TEXT_MUTED,
-            "titleColor": TEXT_MUTED,
-        },
-    }
-
 def base_chart(data: pd.DataFrame) -> alt.Chart:
-    config = get_chart_config()
+    """Create base chart with consistent dark mode styling."""
     return (
-        alt.Chart(data, background=config["background"])
-        .configure_axis(**config["axis"])
-        .configure_view(**config["view"])
-        .configure_legend(**config["legend"])
+        alt.Chart(data, background=DARK_BG)
+        .configure_axis(
+            labelColor=TEXT_MUTED,
+            titleColor=TEXT_MUTED,
+            gridColor="#111827",
+        )
+        .configure_view(strokeOpacity=0)
+        .configure_legend(
+            labelColor=TEXT_MUTED,
+            titleColor=TEXT_MUTED,
+        )
     )
 
 
