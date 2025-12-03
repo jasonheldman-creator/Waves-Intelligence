@@ -12,31 +12,20 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# Theme colors (keep these simple to avoid CSS syntax issues)
-# ---------------------------------------------------------
-DARK_BG = "#020617"      # almost black
-CARD_BG = "#020818"
-TEXT_MAIN = "#E5E7EB"
-TEXT_MUTED = "#9CA3AF"
-ACCENT = "#22C55E"       # neon-ish green
-ACCENT_SOFT = "#38BDF8"  # teal / blue
-BORDER = "#1F2937"
-
-# ---------------------------------------------------------
-# Minimal CSS for dark look (NO f-strings to avoid braces issues)
+# Dark theme + simple WAVES styling (hard-coded colors)
 # ---------------------------------------------------------
 CUSTOM_CSS = """
 <style>
     .stApp {
-        background-color: #020617 !important;
+        background-color: #020617 !important;  /* almost black */
     }
     .block-container {
-        padding-top: 1.5rem;
+        padding-top: 1.4rem;
         padding-bottom: 2rem;
         max-width: 1350px;
     }
     h1, h2, h3, h4, h5, h6, p, span, label {
-        color: #E5E7EB !important;
+        color: #E5E7EB !important;  /* light gray */
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
     }
     .metric-card {
@@ -70,30 +59,37 @@ CUSTOM_CSS = """
     .section-title {
         font-size: 0.95rem;
         font-weight: 600;
-        margin-bottom: 0.3rem;
+        margin-bottom: 0.2rem;
     }
     .section-caption {
         font-size: 0.75rem;
         color: #9CA3AF;
-        margin-bottom: 0.6rem;
+        margin-bottom: 0.5rem;
     }
     .sidebar-title {
         font-size: 0.9rem;
         font-weight: 600;
-        margin-bottom: 0.3rem;
+        margin-bottom: 0.25rem;
     }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
+# Colors for charts (must match CSS but not referenced inside it)
+DARK_BG = "#020617"
+TEXT_MUTED = "#9CA3AF"
+ACCENT_GREEN = "#22C55E"
+ACCENT_BLUE = "#38BDF8"
+ACCENT_RED = "#F97373"
+
 # ---------------------------------------------------------
-# Wave definitions (15 slots, all equity-style Waves)
+# Wave definitions (15 Waves)
 # ---------------------------------------------------------
 WAVES = {
     "sp500": {
         "label": "S&P 500 Wave (LIVE Demo)",
         "benchmark": "S&P 500 Index",
-        "csv_hint": "SP500_PORTFOLIO_FINAL.csv export",
+        "csv_hint": "SP500_PORTFOLIO_FINAL.csv",
         "wave_type": "AI-Managed Wave",
     },
     "us_growth": {
@@ -150,25 +146,25 @@ WAVES = {
         "csv_hint": "QUALITY_CORE_WAVE.csv",
         "wave_type": "Core Wave",
     },
-    "us_core": {
+    "diversified_us": {
         "label": "US Core Equity Wave",
         "benchmark": "Total US Market",
         "csv_hint": "US_CORE_EQUITY_WAVE.csv",
         "wave_type": "Core Wave",
     },
-    "intl_dev": {
+    "intl_developed": {
         "label": "International Developed Wave",
         "benchmark": "MSCI EAFE",
         "csv_hint": "INTL_DEV_WAVE.csv",
         "wave_type": "Core Wave",
     },
-    "em": {
+    "emerging": {
         "label": "Emerging Markets Wave",
         "benchmark": "MSCI EM",
         "csv_hint": "EM_WAVE.csv",
         "wave_type": "Core Wave",
     },
-    "div_growth": {
+    "dividend_growth": {
         "label": "Dividend Growth Wave",
         "benchmark": "US Dividend Growth Index",
         "csv_hint": "DIVIDEND_GROWTH_WAVE.csv",
@@ -183,7 +179,7 @@ WAVES = {
 }
 
 # ---------------------------------------------------------
-# Sidebar: control panel
+# Sidebar: control panel (Wave + risk + overrides + upload)
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown(
@@ -204,17 +200,16 @@ with st.sidebar:
     wave_cfg = WAVES[wave_key]
 
     st.markdown(
-        "<div class='sidebar-title'>Wave type:</div>",
+        f"<div class='sidebar-title'>Wave type:</div>"
+        f"<span style='font-size:0.8rem;color:{TEXT_MUTED};'>"
+        f"{wave_cfg['wave_type']} • Benchmark: {wave_cfg['benchmark']}</span>",
         unsafe_allow_html=True,
     )
-    st.caption(f"{wave_cfg['wave_type']} • Benchmark: {wave_cfg['benchmark']}")
 
     st.markdown("---")
 
-    st.markdown(
-        "<div class='sidebar-title'>SmartSafe™ level (for meeting demos)</div>",
-        unsafe_allow_html=True,
-    )
+    # SmartSafe level
+    st.markdown("<div class='sidebar-title'>SmartSafe™ level</div>", unsafe_allow_html=True)
     smartsafe = st.radio(
         "SmartSafe level",
         ["Standard", "Defensive", "Max Safety"],
@@ -222,30 +217,52 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-    if smartsafe == "Standard":
-        safe_caption = "Standard — fully invested, normal risk budget."
-    elif smartsafe == "Defensive":
-        safe_caption = "Defensive — elevated cash / SmartSafe™, trimmed tails."
-    else:
-        safe_caption = "Max Safety — high cash / SmartSafe™, risk engine throttled."
+    # Risk mode (this is your Alpha / Alpha−Beta / Private Logic switch)
+    st.markdown("<div class='sidebar-title'>Risk / alpha mode</div>", unsafe_allow_html=True)
+    risk_mode = st.radio(
+        "Risk mode",
+        ["Standard", "Alpha-minus-Beta", "Private Logic"],
+        index=0,
+        label_visibility="collapsed",
+    )
 
-    st.caption(safe_caption)
+    # Human overrides – this is your “money manager” panel
+    st.markdown("<div class='sidebar-title'>Human overrides (simulated)</div>", unsafe_allow_html=True)
+    cash_override = st.slider(
+        "Extra SmartSafe™ cash buffer",
+        min_value=0,
+        max_value=40,
+        value=0,
+        step=5,
+        help="Layers additional cash on top of the Wave’s internal risk engine.",
+    )
+    tilt = st.slider(
+        "Style tilt (Growth  ⟶  Value)",
+        min_value=-2,
+        max_value=2,
+        value=0,
+        step=1,
+        help="Negative = tilt to Growth names, Positive = tilt to Value/Defensive.",
+    )
+
+    st.caption(
+        "These controls do **not** change the CSV; they simulate how a human "
+        "manager could lean in / de-risk around the AI engine.",
+        unsafe_allow_html=True,
+    )
 
     st.markdown("---")
 
-    st.markdown(
-        "<div class='sidebar-title'>Upload latest Wave snapshot (.csv)</div>",
-        unsafe_allow_html=True,
-    )
+    # CSV upload
+    st.markdown("<div class='sidebar-title'>Upload latest Wave snapshot (.csv)</div>", unsafe_allow_html=True)
     st.caption(
-        "Expected columns (any order): **Ticker, Price, Dollar_Alloc** "
-        "(optional: Weight_pct, Index_Weight).<br>"
-        f"Suggested export: `{wave_cfg['csv_hint']}`",
-        unsafe_allow_html=True,
+        "Columns can be loose, but ideally include: "
+        "`Ticker`, `Price`, `Dollar_Alloc` (optional: `Weight_pct`, `Index_Weight`). "
+        f"Suggested export for this Wave: `{wave_cfg['csv_hint']}`"
     )
 
-    portfolio_file = st.file_uploader(
-        "Upload Wave CSV",
+    uploaded_file = st.file_uploader(
+        "Browse files",
         type=["csv"],
         label_visibility="collapsed",
         key="wave_csv",
@@ -264,16 +281,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown(
-    f"<span style='color:{ACCENT_SOFT};font-size:0.8rem;font-weight:500;'>"
-    "AI-Managed Wave • Real-time demo • CSV-driven • No external data calls</span>",
+    f"<span style='color:{ACCENT_BLUE};font-size:0.8rem;font-weight:500;'>"
+    f"AI-Managed Wave • Real-time demo • CSV-driven • No external data calls</span>",
     unsafe_allow_html=True,
 )
 st.markdown("")
 
-# ---------------------------------------------------------
-# If no CSV yet, show instructions and stop
-# ---------------------------------------------------------
-if portfolio_file is None:
+# If no CSV yet, just show instructions and stop
+if uploaded_file is None:
     st.info(
         "Upload the latest Wave snapshot CSV in the sidebar to render the console. "
         "Use your Google Sheets export for the selected Wave."
@@ -281,35 +296,39 @@ if portfolio_file is None:
     st.stop()
 
 # ---------------------------------------------------------
-# Load & normalize data
+# Load & normalize data  (SAFE – only runs once CSV exists)
 # ---------------------------------------------------------
 try:
-    raw_df = pd.read_csv(portfolio_file)
+    raw_df = pd.read_csv(uploaded_file)
 except Exception as e:
     st.error(f"Error reading CSV: {e}")
     st.stop()
 
-# Normalize column names
-raw_df.columns = [c.strip().replace(" ", "_") for c in raw_df.columns]
+# Normalize column names (lowercase & underscores)
+raw_df.columns = [
+    c.strip().replace(" ", "_").replace("-", "_") for c in raw_df.columns
+]
+
 lower_cols = {c.lower(): c for c in raw_df.columns}
 
 
-def pick_col(*candidates):
-    for cand in candidates:
-        if cand.lower() in lower_cols:
-            return lower_cols[cand.lower()]
+def pick_column(*names):
+    for n in names:
+        key = n.lower()
+        if key in lower_cols:
+            return lower_cols[key]
     return None
 
 
-ticker_col = pick_col("Ticker")
-price_col = pick_col("Price", "Last")
-dollar_col = pick_col("Dollar_Alloc", "DollarAlloc", "Dollar_Value")
-weight_col = pick_col("Weight_pct", "Weight", "Weight_%", "WeightPct")
-index_weight_col = pick_col("Index_Weight", "Benchmark_Weight", "Idx_Weight")
+ticker_col = pick_column("ticker", "symbol")
+price_col = pick_column("price", "last")
+dollar_col = pick_column("dollar_alloc", "dollar_value", "notional")
+weight_col = pick_column("weight_pct", "weight", "weight_%")
+index_weight_col = pick_column("index_weight", "benchmark_weight", "idx_weight")
 
-missing = [
-    name
-    for name, col in [
+missing_requirements = [
+    label
+    for label, col in [
         ("Ticker", ticker_col),
         ("Price", price_col),
         ("Dollar_Alloc", dollar_col),
@@ -317,45 +336,45 @@ missing = [
     if col is None
 ]
 
-if missing:
+if missing_requirements:
     st.error(
-        "CSV is missing required columns: " + ", ".join(missing)
+        "CSV is missing required columns: "
+        + ", ".join(missing_requirements)
         + ". Required: Ticker, Price, Dollar_Alloc. "
         + "Optional: Weight_pct, Index_Weight."
     )
     st.stop()
 
-# Rename to standard names
-rename_map = {
-    ticker_col: "Ticker",
-    price_col: "Price",
-    dollar_col: "Dollar_Alloc",
-}
-if weight_col:
-    rename_map[weight_col] = "Weight_pct"
-if index_weight_col:
-    rename_map[index_weight_col] = "Index_Weight"
+# Build working dataframe with standard names
+df = raw_df.rename(
+    columns={
+        ticker_col: "Ticker",
+        price_col: "Price",
+        dollar_col: "Dollar_Alloc",
+        **({weight_col: "Weight_pct"} if weight_col else {}),
+        **({index_weight_col: "Index_Weight"} if index_weight_col else {}),
+    }
+)
 
-df = raw_df.rename(columns=rename_map)
-
-# Ensure numeric
+# Ensure numeric types
 for col in ["Price", "Dollar_Alloc", "Weight_pct", "Index_Weight"]:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-# De-duplicate tickers: sum allocations, last price, etc.
-agg = {"Price": "last", "Dollar_Alloc": "sum"}
+# Group by ticker (remove duplicate rows per name)
+group_cols = ["Ticker"]
+agg_dict = {"Price": "last", "Dollar_Alloc": "sum"}
 if "Weight_pct" in df.columns:
-    agg["Weight_pct"] = "sum"
+    agg_dict["Weight_pct"] = "sum"
 if "Index_Weight" in df.columns:
-    agg["Index_Weight"] = "mean"
+    agg_dict["Index_Weight"] = "mean"
 
-df = df.groupby("Ticker", as_index=False).agg(agg)
+df = df.groupby(group_cols, as_index=False).agg(agg_dict)
 
-# Recompute weights from Dollar_Alloc for consistency
+# Recompute weight_pct from Dollar_Alloc to be consistent
 total_nav = df["Dollar_Alloc"].sum()
 if total_nav <= 0:
-    st.error("Total NAV from Dollar_Alloc is non-positive. Check your CSV.")
+    st.error("Total NAV calculated from Dollar_Alloc is not positive. Check your CSV.")
     st.stop()
 
 df["Weight_pct"] = df["Dollar_Alloc"] / total_nav * 100.0
@@ -364,25 +383,61 @@ num_holdings = df["Ticker"].nunique()
 largest_position = df["Weight_pct"].max()
 top10_conc = df.nlargest(10, "Weight_pct")["Weight_pct"].sum()
 
-# Helper: ticker → Google search link
+# ---------------------------------------------------------
+# Human override math → "current exposure" card
+# ---------------------------------------------------------
+# Base equity exposure from SmartSafe level
+if smartsafe == "Standard":
+    base_equity = 1.00  # 100% invested
+elif smartsafe == "Defensive":
+    base_equity = 0.80
+else:  # Max Safety
+    base_equity = 0.50
+
+# Risk mode influence – this is more "narrative" than exact
+if risk_mode == "Alpha-minus-Beta":
+    base_equity *= 0.9
+elif risk_mode == "Private Logic":
+    base_equity *= 1.05
+
+# Extra SmartSafe cash override
+equity_exposure = max(0.0, min(1.0, base_equity - cash_override / 100.0))
+cash_exposure = 1.0 - equity_exposure
+
+# Simple text for tilt
+if tilt < 0:
+    tilt_text = "Leaning to **Growth / leadership** names."
+elif tilt > 0:
+    tilt_text = "Leaning to **Value / defensive** names."
+else:
+    tilt_text = "Neutral style tilt — pure Wave engine."
+
+# ---------------------------------------------------------
+# Chart helper for dark mode
+# ---------------------------------------------------------
+def base_chart(data: pd.DataFrame) -> alt.Chart:
+    return (
+        alt.Chart(data, background=DARK_BG)
+        .configure_axis(
+            labelColor=TEXT_MUTED,
+            titleColor=TEXT_MUTED,
+            gridColor="#111827",
+        )
+        .configure_view(strokeOpacity=0)
+        .configure_legend(
+            labelColor=TEXT_MUTED,
+            titleColor=TEXT_MUTED,
+        )
+    )
+
+
 def ticker_link(ticker: str) -> str:
     url = f"https://www.google.com/search?q={ticker}+stock"
     return f"[{ticker}]({url})"
 
 
 # ---------------------------------------------------------
-# Altair base chart config (dark mode)
-# ---------------------------------------------------------
-def base_chart(data: pd.DataFrame) -> alt.Chart:
-    return (
-        alt.Chart(data)
-        .configure_axis(labelColor=TEXT_MUTED, titleColor=TEXT_MUTED, gridColor="#111827")
-        .configure_view(strokeOpacity=0)
-        .configure_legend(labelColor=TEXT_MUTED, titleColor=TEXT_MUTED)
-    )
-
-# ---------------------------------------------------------
-# Metric row
+# Metric row (NAV / holdings / concentration / exposure)
 # ---------------------------------------------------------
 m1, m2, m3, m4 = st.columns(4)
 
@@ -409,16 +464,6 @@ with m2:
 with m3:
     st.markdown(
         f"<div class='metric-card'>"
-        f"<div class='metric-label'>LARGEST POSITION</div>"
-        f"<div class='metric-value'>{largest_position:0.2f}%</div>"
-        f"<div class='metric-sub'>Single-name weight</div>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-with m4:
-    st.markdown(
-        f"<div class='metric-card'>"
         f"<div class='metric-label'>TOP 10 CONCENTRATION</div>"
         f"<div class='metric-value'>{top10_conc:0.2f}%</div>"
         f"<div class='metric-sub'>Sum of top 10 weights</div>"
@@ -426,14 +471,24 @@ with m4:
         unsafe_allow_html=True,
     )
 
+with m4:
+    st.markdown(
+        f"<div class='metric-card'>"
+        f"<div class='metric-label'>CURRENT EXPOSURE</div>"
+        f"<div class='metric-value'>{equity_exposure*100:0.1f}%</div>"
+        f"<div class='metric-sub'>Equity • {cash_exposure*100:0.1f}% in SmartSafe™ / cash</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
 st.markdown("")
 
 # ---------------------------------------------------------
-# Row 1: Top holdings + Alpha vs Index + Full allocation
+# First row: Top holdings • Alpha vs Index • Full allocation
 # ---------------------------------------------------------
 c1, c2, c3 = st.columns([1.1, 1.1, 1.4])
 
-# ----- Top holdings table -----
+# Left: Top holdings table
 with c1:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Top Holdings</div>", unsafe_allow_html=True)
@@ -443,15 +498,10 @@ with c1:
         unsafe_allow_html=True,
     )
 
-    if num_holdings <= 5:
-        top_df = df.sort_values("Weight_pct", ascending=False)
-    else:
-        max_rows = min(50, num_holdings)
-        default_rows = min(20, max_rows)
-        rows = st.slider("Rows", 5, max_rows, default_rows, key="top_rows")
-        top_df = df.sort_values("Weight_pct", ascending=False).head(rows)
+    max_rows = st.slider("Rows", 5, min(50, num_holdings), 20, key="top_rows")
+    top_df = df.sort_values("Weight_pct", ascending=False).head(max_rows).copy()
 
-    table_view = pd.DataFrame(
+    view = pd.DataFrame(
         {
             "Ticker": [ticker_link(t) for t in top_df["Ticker"]],
             "Price": top_df["Price"].round(2),
@@ -459,10 +509,10 @@ with c1:
             "Weight_%": top_df["Weight_pct"].round(3),
         }
     )
-    st.markdown(table_view.to_markdown(index=False), unsafe_allow_html=True)
+    st.markdown(view.to_markdown(index=False), unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ----- Allocation Alpha vs Index -----
+# Middle: Alpha vs index
 with c2:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Allocation Alpha vs Index</div>", unsafe_allow_html=True)
@@ -470,10 +520,10 @@ with c2:
     if "Index_Weight" not in df.columns:
         st.markdown(
             "<div class='section-caption'>Add an `Index_Weight` column to your CSV "
-            "to view overweight / underweight vs benchmark.</div>",
+            "to unlock overweight / underweight vs benchmark.</div>",
             unsafe_allow_html=True,
         )
-        st.info("No `Index_Weight` column found. Skipping alpha chart.")
+        st.info("`Index_Weight` not found in CSV. Skipping alpha chart.")
     else:
         st.markdown(
             "<div class='section-caption'>Positive bars = overweight vs index. "
@@ -498,8 +548,8 @@ with c2:
                 ),
                 color=alt.condition(
                     "datum.Active_pct >= 0",
-                    alt.value(ACCENT),
-                    alt.value("#F97373"),
+                    alt.value(ACCENT_GREEN),
+                    alt.value(ACCENT_RED),
                 ),
                 tooltip=[
                     alt.Tooltip("Ticker:N"),
@@ -514,7 +564,7 @@ with c2:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ----- Full Wave Allocation -----
+# Right: Full allocation
 with c3:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Full Wave Allocation</div>", unsafe_allow_html=True)
@@ -527,7 +577,7 @@ with c3:
     alloc = df.sort_values("Weight_pct", ascending=False).head(150)
     alloc_chart = (
         base_chart(alloc)
-        .mark_bar(color=ACCENT_SOFT)
+        .mark_bar(color=ACCENT_BLUE)
         .encode(
             x=alt.X("Ticker:N", sort=None, title=None),
             y=alt.Y(
@@ -549,11 +599,10 @@ with c3:
 st.markdown("")
 
 # ---------------------------------------------------------
-# Row 2: Top 10, Alpha heatmap, Largest positions
+# Second row: Top 10 chart • Alpha heatmap • Largest positions table
 # ---------------------------------------------------------
 c4, c5, c6 = st.columns([1, 1.2, 1])
 
-# ----- Top 10 by weight -----
 with c4:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Top 10 by Weight</div>", unsafe_allow_html=True)
@@ -561,7 +610,7 @@ with c4:
     top10 = df.sort_values("Weight_pct", ascending=False).head(10)
     top10_chart = (
         base_chart(top10)
-        .mark_bar(color=ACCENT)
+        .mark_bar(color=ACCENT_GREEN)
         .encode(
             x=alt.X("Ticker:N", sort=None, title=None),
             y=alt.Y(
@@ -580,26 +629,26 @@ with c4:
     st.altair_chart(top10_chart, use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ----- Alpha “heatmap” (bar) -----
 with c5:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Alpha Heatmap (Top 50)</div>", unsafe_allow_html=True)
 
     if "Index_Weight" not in df.columns:
         st.markdown(
-            "<div class='section-caption'>Add `Index_Weight` to unlock the alpha heatmap.</div>",
+            "<div class='section-caption'>Provide `Index_Weight` in your CSV to see "
+            "active weight heatmap.</div>",
             unsafe_allow_html=True,
         )
-        st.info("No `Index_Weight` column found. Skipping heatmap.")
+        st.info("`Index_Weight` not found in CSV. Skipping heatmap.")
     else:
         st.markdown(
-            "<div class='section-caption'>Sorted by absolute active weight (over / under index).</div>",
+            "<div class='section-caption'>Sorted by absolute active weight (over / under the index).</div>",
             unsafe_allow_html=True,
         )
-        alpha_df2 = df.copy()
-        alpha_df2["Active_pct"] = alpha_df2["Weight_pct"] - alpha_df2["Index_Weight"]
-        heat_df = alpha_df2.reindex(
-            alpha_df2["Active_pct"].abs().sort_values(ascending=False).head(50).index
+        alpha_df = df.copy()
+        alpha_df["Active_pct"] = alpha_df["Weight_pct"] - alpha_df["Index_Weight"]
+        heat_df = alpha_df.reindex(
+            alpha_df["Active_pct"].abs().sort_values(ascending=False).head(50).index
         )
 
         heat_chart = (
@@ -609,13 +658,13 @@ with c5:
                 x=alt.X("Ticker:N", sort=None, title=None),
                 y=alt.Y(
                     "Active_pct:Q",
-                    title="Active vs Index (pct)",
+                    title="Active vs Index",
                     axis=alt.Axis(format=".1f"),
                 ),
                 color=alt.condition(
                     "datum.Active_pct >= 0",
-                    alt.value(ACCENT),
-                    alt.value("#F97373"),
+                    alt.value(ACCENT_GREEN),
+                    alt.value(ACCENT_RED),
                 ),
                 tooltip=[
                     alt.Tooltip("Ticker:N"),
@@ -630,12 +679,12 @@ with c5:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ----- Largest positions table -----
 with c6:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Largest Positions (Table)</div>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='section-caption'>Top 20 holdings by % weight. Click tickers for detail.</div>",
+        "<div class='section-caption'>Top 20 holdings by % weight. "
+        "Click tickers for more detail.</div>",
         unsafe_allow_html=True,
     )
 
@@ -650,9 +699,22 @@ with c6:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Footer
+# Exposure narrative / overrides explanation (for Franklin)
 # ---------------------------------------------------------
 st.markdown("---")
+st.markdown(
+    "<div class='section-title'>AI engine + human override narrative</div>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    f"- **Risk mode:** `{risk_mode}`  •  **SmartSafe™:** `{smartsafe}`  •  "
+    f"**Extra cash override:** `{cash_override}%`  \n"
+    f"- Implied equity exposure: **{equity_exposure*100:0.1f}%**  •  "
+    f"SmartSafe™ / cash: **{cash_exposure*100:0.1f}%**  \n"
+    f"- {tilt_text}",
+    unsafe_allow_html=True,
+)
+
 st.caption(
     "Upload-based demo • Data source: Wave CSV exports • "
     "WAVES Intelligence™ • Internal demo only (not investment advice)."
