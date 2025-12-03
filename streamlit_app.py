@@ -3,376 +3,507 @@ import pandas as pd
 import numpy as np
 import altair as alt
 
-# ------------------------------------------------------
-# Page + global config
-# ------------------------------------------------------
-
+# ---------------------------------------------------------
+# Page config
+# ---------------------------------------------------------
 st.set_page_config(
     page_title="WAVES Intelligence™ – Institutional Wave Console",
     layout="wide",
+    page_icon="🌊",
 )
 
-# Wave metadata (you can edit names / benchmarks here)
-WAVE_CONFIG = {
-    "S&P 500 Wave (LIVE Demo)": {
-        "subtitle": "S&P 500 Wave — Institutional Portfolio Console",
-        "badge": "AI-Managed Wave",
-        "benchmark": "S&P 500 Index",
-        "live": True,
-    },
-    "Global Universe Wave (Coming Soon)": {
-        "subtitle": "Global Universe Wave — Institutional Portfolio Console",
-        "badge": "AI-Managed Wave",
-        "benchmark": "Global Equity Index",
-        "live": False,
-    },
-    "Income Wave (Coming Soon)": {
-        "subtitle": "Income Wave — Institutional Portfolio Console",
-        "badge": "AI-Managed Wave",
-        "benchmark": "US Dividend / Income Benchmark",
-        "live": False,
-    },
-    "Small Cap Growth Wave (Coming Soon)": {
-        "subtitle": "Small Cap Growth Wave — Institutional Portfolio Console",
-        "badge": "AI-Managed Wave",
-        "benchmark": "US Small Cap Growth Index",
-        "live": False,
-    },
-    "Sm/Mid Growth Wave (Coming Soon)": {
-        "subtitle": "Small–Mid Growth Wave — Institutional Portfolio Console",
-        "badge": "AI-Managed Wave",
-        "benchmark": "US SMID Growth Index",
-        "live": False,
-    },
-    "Future Power & Energy Wave (Coming Soon)": {
-        "subtitle": "Future Power & Energy Wave — Institutional Portfolio Console",
-        "badge": "AI-Managed Wave",
-        "benchmark": "Future Energy / Power Benchmark",
-        "live": False,
-    },
-    "Equity Income Wave (Coming Soon)": {
-        "subtitle": "Equity Income Wave — Institutional Portfolio Console",
-        "badge": "AI-Managed Wave",
-        "benchmark": "Equity Income Index",
-        "live": False,
-    },
-    "RWA Income Wave (Coming Soon)": {
-        "subtitle": "RWA Income Wave — Institutional Portfolio Console",
-        "badge": "AI-Managed Wave",
-        "benchmark": "RWA / Credit Benchmark",
-        "live": False,
-    },
-    "Crypto Income Wave (Coming Soon)": {
-        "subtitle": "Crypto Income Wave — Institutional Portfolio Console",
-        "badge": "AI-Managed Wave",
-        "benchmark": "Crypto Benchmark",
-        "live": False,
-    },
+# ---------------------------------------------------------
+# Dark theme & WAVES branding CSS
+# ---------------------------------------------------------
+st.markdown(
+    """
+<style>
+/* Global app background */
+.stApp {
+    background-color: #02030A;
+    color: #F5F7FA;
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
-# ------------------------------------------------------
-# Sidebar – Wave selector + SmartSafe™
-# ------------------------------------------------------
+/* Remove default header background */
+header[data-testid="stHeader"] {
+    background: rgba(0,0,0,0);
+}
 
-st.sidebar.markdown("### 🌊 WAVES Intelligence™")
-st.sidebar.markdown("Institutional Wave Console (alpha demo)")
+/* Sidebar styling */
+section[data-testid="stSidebar"] {
+    background-color: #050716;
+    border-right: 1px solid #111827;
+}
+section[data-testid="stSidebar"] * {
+    color: #E5E7EB !important;
+}
 
-wave_name = st.sidebar.selectbox(
-    "Select Wave",
-    list(WAVE_CONFIG.keys()),
-    index=0,
+/* Metric cards */
+.metric-card {
+    background: radial-gradient(circle at top left, #0F172A, #020617);
+    border-radius: 16px;
+    padding: 14px 18px;
+    border: 1px solid #1F2937;
+}
+.metric-label {
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9CA3AF;
+}
+.metric-value {
+    font-size: 1.7rem;
+    font-weight: 600;
+    color: #F9FAFB;
+}
+
+/* Section titles */
+.section-title {
+    font-size: 0.8rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #A5B4FC;
+}
+
+/* Dataframe tweaks */
+.stDataFrame {
+    border-radius: 10px;
+    border: 1px solid #1F2933;
+    overflow: hidden;
+}
+
+/* WAVES neon brand */
+.waves-title {
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, #00FFA7, #00E5FF);
+    -webkit-background-clip: text;
+    color: transparent;
+}
+.waves-subtitle {
+    font-size: 0.95rem;
+    color: #9CA3AF;
+}
+.badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.7rem;
+    border-radius: 999px;
+    padding: 2px 9px;
+    margin-right: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.6);
+    color: #E5E7EB;
+}
+.badge-green {
+    border-color: #22C55E;
+    color: #BBF7D0;
+}
+.badge-outline {
+    border-style: dashed;
+}
+
+/* Slider color tweak */
+[data-baseweb="slider"] > div > div {
+    background-color: #1F2937 !important;
+}
+</style>
+""",
+    unsafe_allow_html=True,
 )
 
+# ---------------------------------------------------------
+# Altair base config helper (dark theme)
+# ---------------------------------------------------------
+def style_chart(chart):
+    return (
+        chart.configure_view(strokeWidth=0, fill="#02030A")
+        .configure_title(color="#E5E7EB", fontSize=13)
+        .configure_axis(
+            labelColor="#9CA3AF",
+            titleColor="#9CA3AF",
+            gridColor="#111827"
+        )
+        .configure_legend(
+            labelColor="#E5E7EB",
+            titleColor="#E5E7EB",
+            orient="top"
+        )
+        .properties(background="#02030A")
+    )
+
+
+# ---------------------------------------------------------
+# Sidebar – Wave selector + SmartSafe
+# ---------------------------------------------------------
+st.sidebar.markdown("### 🌊 WAVES Intelligence™")
+st.sidebar.caption("Institutional Wave Console (alpha demo)")
+
+wave_options = {
+    "sp500": {
+        "label": "S&P 500 Wave (LIVE Demo)",
+        "benchmark": "S&P 500 Index",
+        "note": "Flagship US large-cap core Wave."
+    },
+    "us_growth": {
+        "label": "US Growth Wave",
+        "benchmark": "Russell 1000 Growth",
+        "note": "Concentrated large-cap growth leaders."
+    },
+    "us_value": {
+        "label": "US Value Wave",
+        "benchmark": "Russell 1000 Value",
+        "note": "Quality value & dividend tilt."
+    },
+    "smid_growth": {
+        "label": "Small–Mid Growth Wave",
+        "benchmark": "Russell 2500 Growth",
+        "note": "Smaller company innovation beta."
+    },
+    "future_power": {
+        "label": "Future Power & Energy Wave",
+        "benchmark": "Clean + Next-Gen Energy Basket",
+        "note": "Energy transition, renewables, grid."
+    },
+    "global_equity": {
+        "label": "Global Universe Wave",
+        "benchmark": "MSCI ACWI",
+        "note": "All-world multi-region equity stack."
+    },
+    "equity_income": {
+        "label": "Equity Income Wave",
+        "benchmark": "High Dividend Equity Index",
+        "note": "Cash-flow rich, dividend-focused equity."
+    },
+    "rwa_income": {
+        "label": "RWA Income Wave",
+        "benchmark": "Blended RWA / Credit Index",
+        "note": "Tokenized income & real-world assets."
+    },
+    # Add more equity Waves here as needed…
+}
+
+wave_key = st.sidebar.selectbox(
+    "Select Wave",
+    options=list(wave_options.keys()),
+    format_func=lambda k: wave_options[k]["label"],
+)
+
+selected_wave = wave_options[wave_key]
+
+st.sidebar.markdown("##### SmartSafe™ level (for meeting demos)")
 smart_safe = st.sidebar.radio(
-    "SmartSafe™ level (for meeting demos)",
+    "",
     ["Standard", "Defensive", "Max Safety"],
     index=0,
 )
 
 st.sidebar.markdown(
     """
-Tip: Use different SmartSafe™ levels in the meeting  
-to show how WAVES can **de-risk** without touching  
-the core engine.
+Tip: Use different SmartSafe™ levels live  
+to narrate how WAVES can **dial risk down**  
+without touching the core engine.
 """
 )
 
-wave_cfg = WAVE_CONFIG[wave_name]
-
-# ------------------------------------------------------
-# Header / Branding
-# ------------------------------------------------------
-
+# ---------------------------------------------------------
+# Main header
+# ---------------------------------------------------------
 st.markdown(
-    """
-    <h1 style="color:#00FFA7;margin-bottom:0;">WAVES INTELLIGENCE™</h1>
-    """,
+    f"""
+<div class="waves-title">WAVES INTELLIGENCE™</div>
+<div class="waves-subtitle">
+    {selected_wave["label"]} — Institutional Portfolio Console
+</div>
+<br>
+<div>
+    <span class="badge badge-green">AI-Managed Wave</span>
+    <span class="badge">Benchmark: {selected_wave["benchmark"]}</span>
+    <span class="badge badge-outline">SmartSafe™: {smart_safe}</span>
+    <span class="badge badge-outline">Real-time demo · CSV-driven · No external data calls</span>
+</div>
+<br>
+""",
     unsafe_allow_html=True,
 )
 
-st.markdown(f"### {wave_cfg['subtitle']}")
-
-badges_html = f"""
-<div style="margin-top:4px;margin-bottom:20px;">
-    <span style="
-        background-color:#111827;
-        color:#22C55E;
-        padding:4px 10px;
-        border-radius:999px;
-        font-size:11px;
-        margin-right:4px;
-    ">{wave_cfg['badge']}</span>
-    <span style="
-        background-color:#0F172A;
-        color:#9CA3AF;
-        padding:4px 10px;
-        border-radius:999px;
-        font-size:11px;
-        margin-right:4px;
-    ">Real-time demo • CSV-driven • No external data calls</span>
-    <span style="
-        background-color:#020617;
-        color:#FACC15;
-        padding:4px 10px;
-        border-radius:999px;
-        font-size:11px;
-    ">Benchmark: {wave_cfg['benchmark']}</span>
-</div>
-"""
-st.markdown(badges_html, unsafe_allow_html=True)
-
-# SmartSafe display hint
+# ---------------------------------------------------------
+# File upload
+# ---------------------------------------------------------
 st.markdown(
-    f"**SmartSafe™ Scenario:** `{smart_safe}` — adjust this live to narrate "
-    "how WAVES can dial risk down without touching the core portfolio engine."
+    "#### Upload latest Wave snapshot  <span style='color:#22C55E'>(.csv)</span>",
+    unsafe_allow_html=True,
 )
 
-st.markdown("---")
-
-# ------------------------------------------------------
-# File upload
-# ------------------------------------------------------
-
-st.markdown("#### Upload latest Wave snapshot (`.csv`)")
+st.caption(
+    "Upload the most recent export for **this Wave** "
+    "(e.g., `SP500_PORTFOLIO_FINAL.csv`). "
+    "Expected core columns: `Ticker`, `Price`, `Dollar_Alloc`, `Index_Weight`."
+)
 
 uploaded_file = st.file_uploader(
-    "Upload your SP500_PORTFOLIO_FINAL.csv (or equivalent for this Wave)",
+    "Drag & drop file here, or browse",
     type=["csv"],
+    label_visibility="collapsed",
 )
 
 if uploaded_file is None:
-    st.info(
-        "👆 Upload a CSV to see the full dashboard. "
-        "Required columns: `Ticker`, `Price`, `Dollar_Alloc`, `Index_Weight`. "
-        "`Weight_pct` is optional – the app will calculate it if missing."
-    )
+    st.info("👆 Upload a Wave snapshot CSV to activate the console.")
     st.stop()
 
-# ------------------------------------------------------
-# Data loading + validation
-# ------------------------------------------------------
-
+# ---------------------------------------------------------
+# Load + normalize CSV
+# ---------------------------------------------------------
 try:
-    df = pd.read_csv(uploaded_file)
+    raw_df = pd.read_csv(uploaded_file)
 except Exception as e:
     st.error(f"Error reading CSV: {e}")
     st.stop()
 
-# Normalize column names (strip spaces)
-df.columns = [str(c).strip() for c in df.columns]
+# Normalize column names (strip spaces, unify case)
+norm_cols = {c: c.strip().replace(" ", "_") for c in raw_df.columns}
+raw_df = raw_df.rename(columns=norm_cols)
 
+# Expected column mapping
 required_cols = ["Ticker", "Price", "Dollar_Alloc", "Index_Weight"]
-missing = [c for c in required_cols if c not in df.columns]
 
+missing = [c for c in required_cols if c not in raw_df.columns]
 if missing:
     st.error(
         "Missing required columns in CSV: "
         + ", ".join(missing)
-        + "<br>Expected at least: "
-        + ", ".join(required_cols + ["Weight_pct (optional)"]),
+        + "<br><br>"
+        + "Expected **at least**: `Ticker`, `Price`, `Dollar_Alloc`, `Index_Weight`.",
         icon="⚠️",
     )
     st.stop()
 
-# If Weight_pct is not present, derive it from Dollar_Alloc
-if "Weight_pct" not in df.columns:
-    total_alloc = df["Dollar_Alloc"].replace({0: np.nan}).sum()
-    if total_alloc == 0 or pd.isna(total_alloc):
-        st.error(
-            "Unable to derive `Weight_pct` because total `Dollar_Alloc` is 0. "
-            "Please check the uploaded file."
-        )
-        st.stop()
-    df["Weight_pct"] = df["Dollar_Alloc"] / total_alloc * 100.0
+df = raw_df[required_cols].copy()
 
-# Clean up types
-for col in ["Price", "Dollar_Alloc", "Weight_pct", "Index_Weight"]:
+# ---------------------------------------------------------
+# Clean & aggregate positions by Ticker
+# ---------------------------------------------------------
+for col in ["Price", "Dollar_Alloc", "Index_Weight"]:
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
-df = df.dropna(subset=["Ticker", "Dollar_Alloc", "Weight_pct", "Index_Weight"])
+df = df.dropna(subset=["Ticker", "Dollar_Alloc", "Index_Weight"])
 
-# Add alpha column (portfolio weight minus benchmark weight)
-df["Alpha_pct"] = df["Weight_pct"] - df["Index_Weight"]
+agg_df = (
+    df.groupby("Ticker", as_index=False)
+    .agg(
+        {
+            "Price": "first",          # assume prices identical within ticker
+            "Dollar_Alloc": "sum",     # sum exposure
+            "Index_Weight": "sum",     # sum index weight share
+        }
+    )
+)
 
-# Sort by portfolio weight for various views
+total_alloc = agg_df["Dollar_Alloc"].sum()
+if total_alloc <= 0 or pd.isna(total_alloc):
+    st.error(
+        "Total `Dollar_Alloc` is 0 or invalid after aggregation. "
+        "Please check the uploaded file."
+    )
+    st.stop()
+
+agg_df["Weight_pct"] = agg_df["Dollar_Alloc"] / total_alloc * 100.0
+agg_df["Alpha_pct"] = agg_df["Weight_pct"] - agg_df["Index_Weight"]
+
+df = agg_df.copy()
 df_sorted = df.sort_values("Weight_pct", ascending=False).reset_index(drop=True)
 
-# ------------------------------------------------------
-# High-level metrics
-# ------------------------------------------------------
-
-total_nav = float(df["Dollar_Alloc"].sum())
-num_holdings = int(df["Ticker"].nunique())
-largest_pos = float(df["Weight_pct"].max())
-top10_conc = float(df_sorted.head(10)["Dollar_Alloc"].sum() / total_nav * 100.0)
+# ---------------------------------------------------------
+# Summary metrics
+# ---------------------------------------------------------
+total_nav = total_alloc
+num_holdings = len(df_sorted)
+largest_position = df_sorted["Weight_pct"].max()
+top10_conc = df_sorted["Weight_pct"].nlargest(10).sum()
 
 m1, m2, m3, m4 = st.columns(4)
 
-m1.metric("Total NAV", f"${total_nav:,.0f}")
-m2.metric("# of Holdings", f"{num_holdings}")
-m3.metric("Largest Position", f"{largest_pos:.2f}%")
-m4.metric("Top 10 Concentration", f"{top10_conc:.2f}%")
+with m1:
+    st.markdown(
+        f"""
+<div class="metric-card">
+  <div class="metric-label">Total NAV</div>
+  <div class="metric-value">${total_nav:,.0f}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+with m2:
+    st.markdown(
+        f"""
+<div class="metric-card">
+  <div class="metric-label"># of Holdings</div>
+  <div class="metric-value">{num_holdings:,}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+with m3:
+    st.markdown(
+        f"""
+<div class="metric-card">
+  <div class="metric-label">Largest Position</div>
+  <div class="metric-value">{largest_position:.2f}%</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+with m4:
+    st.markdown(
+        f"""
+<div class="metric-card">
+  <div class="metric-label">Top 10 Concentration</div>
+  <div class="metric-value">{top10_conc:.2f}%</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
 st.markdown("---")
 
-# ------------------------------------------------------
-# Layout: top holdings + charts
-# ------------------------------------------------------
+# ---------------------------------------------------------
+# Top holdings (table) + Alpha vs Index chart
+# ---------------------------------------------------------
+st.markdown('<div class="section-title">Top Holdings</div>', unsafe_allow_html=True)
 
-# Top holdings table (left)
-left_col, mid_col, right_col = st.columns([1.2, 1.0, 1.2])
+top_rows = st.slider("Rows", min_value=10, max_value=50, value=20, step=5)
 
-with left_col:
-    st.markdown("#### Top Holdings")
-    rows = st.slider("Rows", min_value=5, max_value=50, value=20, step=1)
-    show_cols = ["Ticker", "Price", "Dollar_Alloc", "Weight_pct"]
+left, mid, right = st.columns([1.1, 1.2, 1.3])
+
+with left:
+    top_table = df_sorted.head(top_rows)[["Ticker", "Price", "Dollar_Alloc", "Weight_pct"]]
     st.dataframe(
-        df_sorted.head(rows)[show_cols],
+        top_table,
         use_container_width=True,
         hide_index=True,
-        height=420,
     )
 
-# Allocation Alpha vs Index (middle)
-with mid_col:
-    st.markdown("#### Allocation Alpha vs Index")
-    st.caption("Positive bars = overweight vs index. Negative bars = underweight.")
+with mid:
+    st.markdown(
+        '<div class="section-title">Allocation Alpha vs Index</div>',
+        unsafe_allow_html=True,
+    )
+    top_alpha = df_sorted.head(15)
 
-    # Focus on the 10 largest absolute alpha positions
-    alpha_df = df.copy()
-    alpha_df["abs_alpha"] = alpha_df["Alpha_pct"].abs()
-    alpha_top = alpha_df.sort_values("abs_alpha", ascending=False).head(10)
-
-    alpha_chart = (
-        alt.Chart(alpha_top)
-        .mark_bar()
-        .encode(
-            x=alt.X("Ticker:N", sort=None, title=""),
-            y=alt.Y("Alpha_pct:Q", title="Active weight vs index (pct)"),
-            color=alt.condition(
-                "datum.Alpha_pct >= 0",
-                alt.value("#22C55E"),  # green for overweight
-                alt.value("#F97373"),  # red for underweight
-            ),
-            tooltip=[
-                "Ticker",
-                alt.Tooltip("Weight_pct:Q", title="Wave Weight %", format=".2f"),
-                alt.Tooltip("Index_Weight:Q", title="Index Weight %", format=".2f"),
-                alt.Tooltip("Alpha_pct:Q", title="Active Weight %", format=".2f"),
-            ],
-        )
-        .properties(height=260)
+    alpha_chart = alt.Chart(top_alpha).mark_bar().encode(
+        x=alt.X("Ticker:N", sort=None, title=None),
+        y=alt.Y("Alpha_pct:Q", title="Active weight vs Index (pct)"),
+        color=alt.condition(
+            "datum.Alpha_pct >= 0",
+            alt.value("#22C55E"),  # green for overweight
+            alt.value("#F97373"),  # red for underweight
+        ),
+        tooltip=[
+            alt.Tooltip("Ticker:N"),
+            alt.Tooltip("Weight_pct:Q", title="Wave Weight (%)", format=".2f"),
+            alt.Tooltip("Index_Weight:Q", title="Index Weight (%)", format=".2f"),
+            alt.Tooltip("Alpha_pct:Q", title="Active vs Index (%)", format=".2f"),
+        ],
+    ).properties(
+        height=260,
+        title="Allocation Alpha vs Benchmark (Top 15)",
     )
 
-    st.altair_chart(alpha_chart, use_container_width=True)
+    st.altair_chart(style_chart(alpha_chart), use_container_width=True)
 
-    st.markdown("#### Top 10 by Weight")
-    top10 = df_sorted.head(10)
-    top10_chart = (
-        alt.Chart(top10)
-        .mark_bar()
-        .encode(
-            x=alt.X("Ticker:N", sort=None, title=""),
-            y=alt.Y("Weight_pct:Q", title="% of Wave"),
-            tooltip=[
-                "Ticker",
-                alt.Tooltip("Weight_pct:Q", title="Weight %", format=".2f"),
-            ],
-        )
-        .properties(height=220)
+with right:
+    st.markdown(
+        '<div class="section-title">Full Wave Allocation</div>',
+        unsafe_allow_html=True,
     )
-    st.altair_chart(top10_chart, use_container_width=True)
+    full = df_sorted.head(150)
 
-# Full wave allocation + "heatmap" (right)
-with right_col:
-    st.markdown("#### Full Wave Allocation")
-    st.caption("Each bar is a holding’s % weight in the Wave (top 150 shown).")
-
-    top150 = df_sorted.head(150)
-
-    full_chart = (
-        alt.Chart(top150)
-        .mark_bar()
-        .encode(
-            x=alt.X("Ticker:N", sort=None, title=""),
-            y=alt.Y("Weight_pct:Q", title="% of Wave"),
-            tooltip=[
-                "Ticker",
-                alt.Tooltip("Weight_pct:Q", title="Weight %", format=".2f"),
-            ],
-        )
-        .properties(height=260)
-    )
-    st.altair_chart(full_chart, use_container_width=True)
-
-    st.markdown("#### Alpha Heatmap (Top 50)")
-    heat_df = (
-        df.copy()
-        .assign(rank=lambda x: x["Weight_pct"].rank(ascending=False, method="first"))
-        .query("rank <= 50")
+    alloc_chart = alt.Chart(full).mark_bar().encode(
+        x=alt.X("Ticker:N", sort=None, title=None),
+        y=alt.Y("Weight_pct:Q", title="% of Wave"),
+        tooltip=[
+            alt.Tooltip("Ticker:N"),
+            alt.Tooltip("Weight_pct:Q", title="Wave Weight (%)", format=".2f"),
+        ],
+    ).properties(
+        height=260,
+        title="Weight distribution (top 150 names)",
     )
 
-    heat_chart = (
-        alt.Chart(heat_df)
-        .mark_rect()
-        .encode(
-            x=alt.X("Ticker:N", sort=None, title=""),
-            y=alt.value(0),  # single row "heat strip"
-            color=alt.Color(
-                "Alpha_pct:Q",
-                title="Active weight (%)",
-                scale=alt.Scale(scheme="redblue", domainMid=0),
-            ),
-            tooltip=[
-                "Ticker",
-                alt.Tooltip("Weight_pct:Q", title="Wave Weight %", format=".2f"),
-                alt.Tooltip("Index_Weight:Q", title="Index Weight %", format=".2f"),
-                alt.Tooltip("Alpha_pct:Q", title="Active Weight %", format=".2f"),
-            ],
-        )
-        .properties(height=60)
-    )
-    st.altair_chart(heat_chart, use_container_width=True)
+    st.altair_chart(style_chart(alloc_chart), use_container_width=True)
 
-# ------------------------------------------------------
-# Largest positions table
-# ------------------------------------------------------
-
-st.markdown("#### Largest Positions (Table)")
-largest_df = df_sorted[["Ticker", "Weight_pct"]].head(25)
-st.dataframe(
-    largest_df,
-    use_container_width=True,
-    hide_index=True,
-    height=300,
-)
-
-# ------------------------------------------------------
-# Footer / disclaimer
-# ------------------------------------------------------
-
+# ---------------------------------------------------------
+# Bottom row: Top 10 by Weight + Alpha heatmap
+# ---------------------------------------------------------
 st.markdown("---")
-st.caption(
-    "Upload-based view • Data source: internal Wave CSV snapshots • "
-    "WAVES Intelligence™ • Internal demo only (not investment advice)."
+st.markdown('<div class="section-title">Wave Concentration & Alpha Map</div>', unsafe_allow_html=True)
+
+b1, b2 = st.columns([1.1, 1.6])
+
+with b1:
+    st.markdown("##### Top 10 by Weight")
+    top10 = df_sorted.head(10)
+
+    top10_chart = alt.Chart(top10).mark_bar().encode(
+        x=alt.X("Ticker:N", sort=None, title=None),
+        y=alt.Y("Weight_pct:Q", title="% of Wave"),
+        color=alt.value("#38BDF8"),
+        tooltip=[
+            alt.Tooltip("Ticker:N"),
+            alt.Tooltip("Weight_pct:Q", title="Wave Weight (%)", format=".2f"),
+        ],
+    ).properties(height=260)
+
+    st.altair_chart(style_chart(top10_chart), use_container_width=True)
+
+    st.markdown("##### Largest Positions (Table)")
+    st.dataframe(
+        top10[["Ticker", "Weight_pct"]],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+with b2:
+    st.markdown("##### Alpha Heatmap (Top 50 by Weight)")
+    top50 = df_sorted.head(50).copy()
+    top50["Rank"] = np.arange(1, len(top50) + 1)
+
+    heatmap = alt.Chart(top50).mark_rect().encode(
+        x=alt.X("Rank:O", title="Weight rank (1 = largest)"),
+        y=alt.Y("Ticker:N", sort=None, title=None),
+        color=alt.Color(
+            "Alpha_pct:Q",
+            title="Active weight (%)",
+            scale=alt.Scale(scheme="redyellowgreen", domainMid=0),
+        ),
+        tooltip=[
+            alt.Tooltip("Ticker:N"),
+            alt.Tooltip("Weight_pct:Q", title="Wave Weight (%)", format=".2f"),
+            alt.Tooltip("Index_Weight:Q", title="Index Weight (%)", format=".2f"),
+            alt.Tooltip("Alpha_pct:Q", title="Active vs Index (%)", format=".2f"),
+        ],
+    ).properties(
+        height=360,
+    )
+
+    st.altair_chart(style_chart(heatmap), use_container_width=True)
+
+# ---------------------------------------------------------
+# Footer note
+# ---------------------------------------------------------
+st.markdown(
+    """
+---
+<span style="font-size:0.7rem;color:#6B7280;">
+CSV-upload demo only · No live trading.  
+Wave weights & alpha are for **illustration** and internal discussion with Franklin / other institutional buyers.  
+WAVES Intelligence™ · Engineered to outperform.
+</span>
+""",
+    unsafe_allow_html=True,
 )
