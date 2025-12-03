@@ -19,6 +19,7 @@ def compute_dataframe(df, ticker_col, price_col, dollar_col, weight_col, index_w
     """Process and aggregate dataframe by ticker with caching.
     
     Cache key includes all parameters, so different column mappings will be cached separately.
+    Returns the processed dataframe and total NAV.
     """
     # Build working dataframe with standard names
     rename_dict = {
@@ -52,7 +53,7 @@ def compute_dataframe(df, ticker_col, price_col, dollar_col, weight_col, index_w
     total_nav = df["Dollar_Alloc"].sum()
     df["Weight_pct"] = df["Dollar_Alloc"] / total_nav * 100.0
     
-    return df
+    return df, total_nav
 
 # ---------------------------------------------------------
 # Page config
@@ -345,11 +346,14 @@ if "validated" not in st.session_state:
     st.session_state.validated = False
 if "last_file_id" not in st.session_state:
     st.session_state.last_file_id = None
+if "raw_df" not in st.session_state:
+    st.session_state.raw_df = None
 
 # If no CSV yet, just show instructions and stop
 if uploaded_file is None:
     st.session_state.validated = False
     st.session_state.last_file_id = None
+    st.session_state.raw_df = None
     st.info(
         "Upload the latest Wave snapshot CSV in the sidebar to render the console. "
         "Use your Google Sheets export for the selected Wave."
@@ -362,19 +366,24 @@ if uploaded_file is None:
 # Create a unique identifier for the uploaded file
 current_file_id = (uploaded_file.name, uploaded_file.size)
 
-# Only reprocess if it's a new file
+# Only read and process if it's a new file
 if st.session_state.last_file_id != current_file_id:
     st.session_state.validated = False
     st.session_state.last_file_id = current_file_id
-
-try:
-    raw_df = pd.read_csv(uploaded_file)
-except Exception as e:
-    st.error(f"Error reading CSV: {e}")
-    st.stop()
-
-# Normalize column names (cached function)
-raw_df = normalize_columns(raw_df)
+    
+    try:
+        raw_df = pd.read_csv(uploaded_file)
+    except Exception as e:
+        st.error(f"Error reading CSV: {e}")
+        st.stop()
+    
+    # Normalize column names (cached function)
+    raw_df = normalize_columns(raw_df)
+    # Store in session state for reuse
+    st.session_state.raw_df = raw_df
+else:
+    # Reuse the dataframe from session state
+    raw_df = st.session_state.raw_df
 
 lower_cols = {c.lower(): c for c in raw_df.columns}
 
@@ -413,10 +422,9 @@ if missing_requirements:
     st.stop()
 
 # Process dataframe using cached function
-df = compute_dataframe(raw_df, ticker_col, price_col, dollar_col, weight_col, index_weight_col)
+df, total_nav = compute_dataframe(raw_df, ticker_col, price_col, dollar_col, weight_col, index_weight_col)
 
 # Validate total NAV
-total_nav = df["Dollar_Alloc"].sum()
 if total_nav <= 0:
     st.error("Total NAV calculated from Dollar_Alloc is not positive. Check your CSV.")
     st.stop()
