@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import altair as alt
 
 # ---------------------------------------------------------
 # Page config
@@ -178,7 +179,7 @@ WAVES = {
 }
 
 # ---------------------------------------------------------
-# Sidebar: control panel (Step 1 – no SmartSafe, no toggles)
+# Sidebar: wave selector + CSV upload
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown(
@@ -188,7 +189,6 @@ with st.sidebar:
     )
     st.caption("Institutional Wave Console (alpha demo)")
 
-    # Wave selector
     wave_label_to_key = {cfg["label"]: key for key, cfg in WAVES.items()}
     chosen_label = st.selectbox(
         "Select Wave",
@@ -223,7 +223,7 @@ with st.sidebar:
     )
 
 # ---------------------------------------------------------
-# Main header
+# Header
 # ---------------------------------------------------------
 st.markdown(
     "<h1 style='margin-bottom:0.1rem;'>WAVES INTELLIGENCE™</h1>",
@@ -241,9 +241,6 @@ st.markdown(
 )
 st.markdown("")
 
-# ---------------------------------------------------------
-# If no portfolio file yet, show instructions and stop
-# ---------------------------------------------------------
 if portfolio_file is None:
     st.info(
         "Upload the latest Wave snapshot CSV in the sidebar to render the console. "
@@ -252,7 +249,7 @@ if portfolio_file is None:
     st.stop()
 
 # ---------------------------------------------------------
-# Load & normalize data (no charts yet – just metrics & preview)
+# Load & normalize data
 # ---------------------------------------------------------
 try:
     raw_df = pd.read_csv(portfolio_file)
@@ -260,13 +257,11 @@ except Exception as e:
     st.error(f"Error reading CSV: {e}")
     st.stop()
 
-# Normalize column names
 raw_df.columns = [c.strip().replace(" ", "_") for c in raw_df.columns]
 lower_cols = {c.lower(): c for c in raw_df.columns}
 
 
 def pick(*candidates):
-    """Pick the first matching column name from candidates (case-insensitive)."""
     for cand in candidates:
         if cand.lower() in lower_cols:
             return lower_cols[cand.lower()]
@@ -277,6 +272,7 @@ ticker_col = pick("Ticker")
 price_col = pick("Price", "Last")
 dollar_col = pick("Dollar_Alloc", "DollarAlloc", "Dollar_Value")
 weight_col = pick("Weight_pct", "Weight", "Weight_%", "WeightPct")
+index_weight_col = pick("Index_Weight", "Benchmark_Weight", "Idx_Weight")
 
 missing_core = [name for name, col in
                 [("Ticker", ticker_col), ("Price", price_col), ("Dollar_Alloc", dollar_col)]
@@ -296,17 +292,20 @@ df = raw_df.rename(
         price_col: "Price",
         dollar_col: "Dollar_Alloc",
         **({weight_col: "Weight_pct"} if weight_col else {}),
+        **({index_weight_col: "Index_Weight"} if index_weight_col else {}),
     }
 )
 
-# Ensure numeric
-for col in ["Price", "Dollar_Alloc", "Weight_pct"]:
+for col in ["Price", "Dollar_Alloc", "Weight_pct", "Index_Weight"]:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-# De-duplicate tickers and recompute weights
+# De-dupe tickers and recompute weights
 group_cols = ["Ticker"]
 agg_dict = {"Price": "last", "Dollar_Alloc": "sum"}
+if "Index_Weight" in df.columns:
+    agg_dict["Index_Weight"] = "mean"
+
 df = df.groupby(group_cols, as_index=False).agg(agg_dict)
 
 total_nav = df["Dollar_Alloc"].sum()
@@ -321,7 +320,30 @@ largest_position = df["Weight_pct"].max()
 top10_conc = df.nlargest(10, "Weight_pct")["Weight_pct"].sum()
 
 # ---------------------------------------------------------
-# Metric row (Step 1)
+# Helper: base Altair chart with dark theme
+# ---------------------------------------------------------
+def base_chart(data: pd.DataFrame):
+    return (
+        alt.Chart(data, background=DARK_BG)
+        .configure_axis(
+            labelColor=TEXT_MUTED,
+            titleColor=TEXT_MUTED,
+            gridColor="#111827",
+        )
+        .configure_view(strokeOpacity=0)
+        .configure_legend(
+            labelColor=TEXT_MUTED,
+            titleColor=TEXT_MUTED,
+        )
+    )
+
+# Helper: ticker hyperlink
+def ticker_link(ticker: str) -> str:
+    url = f"https://www.google.com/search?q={ticker}+stock"
+    return f"[{ticker}]({url})"
+
+# ---------------------------------------------------------
+# Metric row
 # ---------------------------------------------------------
 m1, m2, m3, m4 = st.columns(4)
 with m1:
@@ -364,29 +386,209 @@ with m4:
 st.markdown("")
 
 # ---------------------------------------------------------
-# Simple holdings preview (Step 1 – no charts yet)
+# Row 1: Top holdings table + Allocation Alpha + Full Allocation
 # ---------------------------------------------------------
-st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-st.markdown("<div class='section-title'>Holdings preview</div>", unsafe_allow_html=True)
-st.markdown(
-    "<div class='section-caption'>Top 25 holdings by dollar allocation.</div>",
-    unsafe_allow_html=True,
-)
+c1, c2, c3 = st.columns([1.1, 1.1, 1.4])
 
-preview = df.sort_values("Dollar_Alloc", ascending=False).head(25).copy()
-preview_display = preview[["Ticker", "Price", "Dollar_Alloc", "Weight_pct"]].copy()
-preview_display["Price"] = preview_display["Price"].round(2)
-preview_display["Dollar_Alloc"] = preview_display["Dollar_Alloc"].round(0)
-preview_display["Weight_pct"] = preview_display["Weight_pct"].round(3)
+# Top holdings table
+with c1:
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Top Holdings</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='section-caption'>Sorted by Wave weight. "
+        "Tickers link out to live research.</div>",
+        unsafe_allow_html=True,
+    )
 
-st.dataframe(
-    preview_display.rename(
-        columns={"Dollar_Alloc": "Dollar_Alloc($)", "Weight_pct": "Weight_%"}
-    ),
-    use_container_width=True,
-)
+    max_rows = st.slider("Rows", 5, min(50, num_holdings), 20, key="top_rows")
+    top_df = df.sort_values("Weight_pct", ascending=False).head(max_rows).copy()
 
-st.markdown("</div>", unsafe_allow_html=True)
+    view = pd.DataFrame(
+        {
+            "Ticker": [ticker_link(t) for t in top_df["Ticker"]],
+            "Price": top_df["Price"].round(2),
+            "Dollar_Alloc": top_df["Dollar_Alloc"].round(0),
+            "Weight_%": top_df["Weight_pct"].round(3),
+        }
+    )
+
+    st.markdown(view.to_markdown(index=False), unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Allocation Alpha vs Index
+with c2:
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Allocation Alpha vs Index</div>", unsafe_allow_html=True)
+
+    if "Index_Weight" not in df.columns:
+        st.markdown(
+            "<div class='section-caption'>Add an `Index_Weight` column to your CSV "
+            "to see overweight / underweight vs benchmark.</div>",
+            unsafe_allow_html=True,
+        )
+        st.info("No `Index_Weight` found in CSV. Skipping alpha chart.")
+    else:
+        st.markdown(
+            "<div class='section-caption'>Positive bars = overweight vs index. "
+            "Negative bars = underweight.</div>",
+            unsafe_allow_html=True,
+        )
+        alpha_df = df.copy()
+        alpha_df["Active_pct"] = alpha_df["Weight_pct"] - alpha_df["Index_Weight"]
+        alpha_top = alpha_df.reindex(
+            alpha_df["Active_pct"].abs().sort_values(ascending=False).head(10).index
+        )
+
+        chart = (
+            base_chart(alpha_top)
+            .mark_bar()
+            .encode(
+                x=alt.X("Ticker:N", sort=None, title=None),
+                y=alt.Y(
+                    "Active_pct:Q",
+                    title="Active weight vs Index (pct)",
+                    axis=alt.Axis(format=".1f"),
+                ),
+                color=alt.condition(
+                    "datum.Active_pct >= 0",
+                    alt.value(ACCENT),
+                    alt.value("#F97373"),
+                ),
+                tooltip=[
+                    alt.Tooltip("Ticker:N"),
+                    alt.Tooltip("Weight_pct:Q", title="Wave weight", format=".2f"),
+                    alt.Tooltip("Index_Weight:Q", title="Index weight", format=".2f"),
+                    alt.Tooltip("Active_pct:Q", title="Active", format=".2f"),
+                ],
+            )
+            .properties(height=260)
+        )
+        st.altair_chart(chart, use_container_width=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Full Wave Allocation
+with c3:
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Full Wave Allocation</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='section-caption'>Each bar is a holding’s % weight in the Wave "
+        "(top 150 shown).</div>",
+        unsafe_allow_html=True,
+    )
+
+    alloc = df.sort_values("Weight_pct", ascending=False).head(150)
+    alloc_chart = (
+        base_chart(alloc)
+        .mark_bar(color=ACCENT_SOFT)
+        .encode(
+            x=alt.X("Ticker:N", sort=None, title=None),
+            y=alt.Y("Weight_pct:Q", title="% of Wave", axis=alt.Axis(format=".1f")),
+            tooltip=[
+                alt.Tooltip("Ticker:N"),
+                alt.Tooltip("Weight_pct:Q", title="Weight", format=".2f"),
+                alt.Tooltip("Dollar_Alloc:Q", title="Dollar", format="$,.0f"),
+            ],
+        )
+        .properties(height=260)
+    )
+    st.altair_chart(alloc_chart, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("")
+
+# ---------------------------------------------------------
+# Row 2: Top 10 bar + Alpha heatmap + Largest positions table
+# ---------------------------------------------------------
+c4, c5, c6 = st.columns([1, 1.2, 1])
+
+# Top 10 by Weight
+with c4:
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Top 10 by Weight</div>", unsafe_allow_html=True)
+
+    top10 = df.sort_values("Weight_pct", ascending=False).head(10)
+    top10_chart = (
+        base_chart(top10)
+        .mark_bar(color=ACCENT)
+        .encode(
+            x=alt.X("Ticker:N", sort=None, title=None),
+            y=alt.Y("Weight_pct:Q", title="Weight (%)", axis=alt.Axis(format=".1f")),
+            tooltip=[
+                alt.Tooltip("Ticker:N"),
+                alt.Tooltip("Weight_pct:Q", title="Weight", format=".2f"),
+                alt.Tooltip("Dollar_Alloc:Q", title="Dollar", format="$,.0f"),
+            ],
+        )
+        .properties(height=220)
+    )
+    st.altair_chart(top10_chart, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Alpha Heatmap (Top 50)
+with c5:
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Alpha Heatmap (Top 50)</div>", unsafe_allow_html=True)
+
+    if "Index_Weight" not in df.columns:
+        st.markdown(
+            "<div class='section-caption'>Add `Index_Weight` to unlock alpha heatmap.</div>",
+            unsafe_allow_html=True,
+        )
+        st.info("No `Index_Weight` found in CSV. Skipping heatmap.")
+    else:
+        st.markdown(
+            "<div class='section-caption'>Sorted by absolute active weight (over / under).</div>",
+            unsafe_allow_html=True,
+        )
+        alpha_df = df.copy()
+        alpha_df["Active_pct"] = alpha_df["Weight_pct"] - alpha_df["Index_Weight"]
+        heat_df = alpha_df.reindex(
+            alpha_df["Active_pct"].abs().sort_values(ascending=False).head(50).index
+        )
+
+        heat_chart = (
+            base_chart(heat_df)
+            .mark_bar()
+            .encode(
+                x=alt.X("Ticker:N", sort=None, title=None),
+                y=alt.Y("Active_pct:Q", title="Active vs Index", axis=alt.Axis(format=".1f")),
+                color=alt.condition(
+                    "datum.Active_pct >= 0",
+                    alt.value(ACCENT),
+                    alt.value("#F97373"),
+                ),
+                tooltip=[
+                    alt.Tooltip("Ticker:N"),
+                    alt.Tooltip("Weight_pct:Q", title="Wave weight", format=".2f"),
+                    alt.Tooltip("Index_Weight:Q", title="Index weight", format=".2f"),
+                    alt.Tooltip("Active_pct:Q", title="Active", format=".2f"),
+                ],
+            )
+            .properties(height=220)
+        )
+        st.altair_chart(heat_chart, use_container_width=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Largest Positions table
+with c6:
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Largest Positions (Table)</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='section-caption'>Top 20 holdings by % weight. Click tickers for detail.</div>",
+        unsafe_allow_html=True,
+    )
+
+    big = df.sort_values("Weight_pct", ascending=False).head(20)
+    big_view = pd.DataFrame(
+        {
+            "Ticker": [ticker_link(t) for t in big["Ticker"]],
+            "Weight_%": big["Weight_pct"].round(3),
+        }
+    )
+    st.markdown(big_view.to_markdown(index=False), unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # Footer
