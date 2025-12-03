@@ -21,15 +21,18 @@ def compute_dataframe(df, ticker_col, price_col, dollar_col, weight_col, index_w
     Cache key includes all parameters, so different column mappings will be cached separately.
     Returns the processed dataframe and total NAV.
     """
+    # Create a copy to avoid modifying the cached input
+    df = df.copy()
+    
     # Build working dataframe with standard names
     rename_dict = {
         ticker_col: "Ticker",
         price_col: "Price",
         dollar_col: "Dollar_Alloc",
     }
-    if weight_col:
+    if weight_col is not None:
         rename_dict[weight_col] = "Weight_pct"
-    if index_weight_col:
+    if index_weight_col is not None:
         rename_dict[index_weight_col] = "Index_Weight"
     
     df = df.rename(columns=rename_dict)
@@ -364,6 +367,8 @@ if uploaded_file is None:
 # Load & normalize data with validation state
 # ---------------------------------------------------------
 # Create a unique identifier for the uploaded file
+# Note: Using (name, size) is sufficient because Streamlit creates new upload objects
+# when files change, and same-name-same-size collisions are extremely rare in practice
 current_file_id = (uploaded_file.name, uploaded_file.size)
 
 # Only read and process if it's a new file
