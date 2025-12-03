@@ -12,16 +12,19 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# Dark theme colors (no formatting inside CSS to avoid syntax issues)
+# Theme colors (keep these simple to avoid CSS syntax issues)
 # ---------------------------------------------------------
 DARK_BG = "#020617"      # almost black
 CARD_BG = "#020818"
 TEXT_MAIN = "#E5E7EB"
 TEXT_MUTED = "#9CA3AF"
-ACCENT = "#22C55E"
-ACCENT_SOFT = "#38BDF8"
+ACCENT = "#22C55E"       # neon-ish green
+ACCENT_SOFT = "#38BDF8"  # teal / blue
 BORDER = "#1F2937"
 
+# ---------------------------------------------------------
+# Minimal CSS for dark look (NO f-strings to avoid braces issues)
+# ---------------------------------------------------------
 CUSTOM_CSS = """
 <style>
     .stApp {
@@ -84,7 +87,7 @@ CUSTOM_CSS = """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Wave definitions (15 Waves)
+# Wave definitions (15 slots, all equity-style Waves)
 # ---------------------------------------------------------
 WAVES = {
     "sp500": {
@@ -112,7 +115,7 @@ WAVES = {
         "wave_type": "AI-Managed Wave",
     },
     "sm_mid_growth": {
-        "label": "Small-Mid Cap Growth Wave",
+        "label": "Small–Mid Cap Growth Wave",
         "benchmark": "SMID Growth Composite",
         "csv_hint": "SMID_GROWTH_WAVE.csv",
         "wave_type": "AI-Managed Wave",
@@ -147,25 +150,25 @@ WAVES = {
         "csv_hint": "QUALITY_CORE_WAVE.csv",
         "wave_type": "Core Wave",
     },
-    "diversified_us": {
+    "us_core": {
         "label": "US Core Equity Wave",
         "benchmark": "Total US Market",
         "csv_hint": "US_CORE_EQUITY_WAVE.csv",
         "wave_type": "Core Wave",
     },
-    "intl_developed": {
+    "intl_dev": {
         "label": "International Developed Wave",
         "benchmark": "MSCI EAFE",
         "csv_hint": "INTL_DEV_WAVE.csv",
         "wave_type": "Core Wave",
     },
-    "emerging": {
+    "em": {
         "label": "Emerging Markets Wave",
         "benchmark": "MSCI EM",
         "csv_hint": "EM_WAVE.csv",
         "wave_type": "Core Wave",
     },
-    "dividend_growth": {
+    "div_growth": {
         "label": "Dividend Growth Wave",
         "benchmark": "US Dividend Growth Index",
         "csv_hint": "DIVIDEND_GROWTH_WAVE.csv",
@@ -178,13 +181,6 @@ WAVES = {
         "wave_type": "Tactical Wave",
     },
 }
-
-# ---------------------------------------------------------
-# Helper: ticker → Google search link
-# ---------------------------------------------------------
-def ticker_link(ticker: str) -> str:
-    url = f"https://www.google.com/search?q={ticker}+stock"
-    return f"[{ticker}]({url})"
 
 # ---------------------------------------------------------
 # Sidebar: control panel
@@ -208,11 +204,10 @@ with st.sidebar:
     wave_cfg = WAVES[wave_key]
 
     st.markdown(
-        f"<div class='sidebar-title'>Wave type:</div>"
-        f"<span style='font-size:0.8rem;color:{TEXT_MUTED};'>{wave_cfg['wave_type']} • "
-        f"Benchmark: {wave_cfg['benchmark']}</span>",
+        "<div class='sidebar-title'>Wave type:</div>",
         unsafe_allow_html=True,
     )
+    st.caption(f"{wave_cfg['wave_type']} • Benchmark: {wave_cfg['benchmark']}")
 
     st.markdown("---")
 
@@ -244,7 +239,8 @@ with st.sidebar:
     )
     st.caption(
         "Expected columns (any order): **Ticker, Price, Dollar_Alloc** "
-        "(optional: Weight_pct, Index_Weight).",
+        "(optional: Weight_pct, Index_Weight).<br>"
+        f"Suggested export: `{wave_cfg['csv_hint']}`",
         unsafe_allow_html=True,
     )
 
@@ -253,18 +249,6 @@ with st.sidebar:
         type=["csv"],
         label_visibility="collapsed",
         key="wave_csv",
-    )
-
-    st.markdown("##### Optional: Trade / Activity log (.csv)")
-    st.caption(
-        "Format: Timestamp, Wave, Ticker, Side, Quantity, Price, (optional Dollar_Amount).",
-        unsafe_allow_html=True,
-    )
-    trade_file = st.file_uploader(
-        "Upload trade log",
-        type=["csv"],
-        label_visibility="collapsed",
-        key="trade_log",
     )
 
 # ---------------------------------------------------------
@@ -280,14 +264,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown(
-    "<span style='color:#38BDF8;font-size:0.8rem;font-weight:500;'>"
+    f"<span style='color:{ACCENT_SOFT};font-size:0.8rem;font-weight:500;'>"
     "AI-Managed Wave • Real-time demo • CSV-driven • No external data calls</span>",
     unsafe_allow_html=True,
 )
 st.markdown("")
 
 # ---------------------------------------------------------
-# If no portfolio file yet, show instructions
+# If no CSV yet, show instructions and stop
 # ---------------------------------------------------------
 if portfolio_file is None:
     st.info(
@@ -307,40 +291,41 @@ except Exception as e:
 
 # Normalize column names
 raw_df.columns = [c.strip().replace(" ", "_") for c in raw_df.columns]
-
-# Flexible column picking
 lower_cols = {c.lower(): c for c in raw_df.columns}
 
 
-def pick(*candidates):
+def pick_col(*candidates):
     for cand in candidates:
         if cand.lower() in lower_cols:
             return lower_cols[cand.lower()]
     return None
 
 
-ticker_col = pick("Ticker")
-price_col = pick("Price", "Last")
-dollar_col = pick("Dollar_Alloc", "DollarAlloc", "Dollar_Value")
-weight_col = pick("Weight_pct", "Weight", "Weight_%", "WeightPct")
-index_weight_col = pick("Index_Weight", "Benchmark_Weight", "Idx_Weight")
+ticker_col = pick_col("Ticker")
+price_col = pick_col("Price", "Last")
+dollar_col = pick_col("Dollar_Alloc", "DollarAlloc", "Dollar_Value")
+weight_col = pick_col("Weight_pct", "Weight", "Weight_%", "WeightPct")
+index_weight_col = pick_col("Index_Weight", "Benchmark_Weight", "Idx_Weight")
 
-missing_core = []
-if ticker_col is None:
-    missing_core.append("Ticker")
-if price_col is None:
-    missing_core.append("Price")
-if dollar_col is None:
-    missing_core.append("Dollar_Alloc")
+missing = [
+    name
+    for name, col in [
+        ("Ticker", ticker_col),
+        ("Price", price_col),
+        ("Dollar_Alloc", dollar_col),
+    ]
+    if col is None
+]
 
-if missing_core:
+if missing:
     st.error(
-        "CSV is missing required columns: "
-        + ", ".join(missing_core)
-        + ". Required: Ticker, Price, Dollar_Alloc. Optional: Weight_pct, Index_Weight."
+        "CSV is missing required columns: " + ", ".join(missing)
+        + ". Required: Ticker, Price, Dollar_Alloc. "
+        + "Optional: Weight_pct, Index_Weight."
     )
     st.stop()
 
+# Rename to standard names
 rename_map = {
     ticker_col: "Ticker",
     price_col: "Price",
@@ -358,17 +343,16 @@ for col in ["Price", "Dollar_Alloc", "Weight_pct", "Index_Weight"]:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-# De-duplicate tickers
-group_cols = ["Ticker"]
-agg_dict = {"Price": "last", "Dollar_Alloc": "sum"}
+# De-duplicate tickers: sum allocations, last price, etc.
+agg = {"Price": "last", "Dollar_Alloc": "sum"}
 if "Weight_pct" in df.columns:
-    agg_dict["Weight_pct"] = "sum"
+    agg["Weight_pct"] = "sum"
 if "Index_Weight" in df.columns:
-    agg_dict["Index_Weight"] = "mean"
+    agg["Index_Weight"] = "mean"
 
-df = df.groupby(group_cols, as_index=False).agg(agg_dict)
+df = df.groupby("Ticker", as_index=False).agg(agg)
 
-# Recompute weights from Dollar_Alloc
+# Recompute weights from Dollar_Alloc for consistency
 total_nav = df["Dollar_Alloc"].sum()
 if total_nav <= 0:
     st.error("Total NAV from Dollar_Alloc is non-positive. Check your CSV.")
@@ -380,17 +364,19 @@ num_holdings = df["Ticker"].nunique()
 largest_position = df["Weight_pct"].max()
 top10_conc = df.nlargest(10, "Weight_pct")["Weight_pct"].sum()
 
+# Helper: ticker → Google search link
+def ticker_link(ticker: str) -> str:
+    url = f"https://www.google.com/search?q={ticker}+stock"
+    return f"[{ticker}]({url})"
+
+
 # ---------------------------------------------------------
-# Helper: Altair chart with dark styling
+# Altair base chart config (dark mode)
 # ---------------------------------------------------------
 def base_chart(data: pd.DataFrame) -> alt.Chart:
     return (
-        alt.Chart(data, background=DARK_BG)
-        .configure_axis(
-            labelColor=TEXT_MUTED,
-            titleColor=TEXT_MUTED,
-            gridColor="#111827",
-        )
+        alt.Chart(data)
+        .configure_axis(labelColor=TEXT_MUTED, titleColor=TEXT_MUTED, gridColor="#111827")
         .configure_view(strokeOpacity=0)
         .configure_legend(labelColor=TEXT_MUTED, titleColor=TEXT_MUTED)
     )
@@ -402,75 +388,70 @@ m1, m2, m3, m4 = st.columns(4)
 
 with m1:
     st.markdown(
-        "<div class='metric-card'>"
-        "<div class='metric-label'>TOTAL NAV</div>"
+        f"<div class='metric-card'>"
+        f"<div class='metric-label'>TOTAL NAV</div>"
         f"<div class='metric-value'>${total_nav:,.0f}</div>"
-        "<div class='metric-sub'>Snapshot from uploaded CSV</div>"
-        "</div>",
+        f"<div class='metric-sub'>Snapshot from uploaded CSV</div>"
+        f"</div>",
         unsafe_allow_html=True,
     )
 
 with m2:
     st.markdown(
-        "<div class='metric-card'>"
-        "<div class='metric-label'># OF HOLDINGS</div>"
+        f"<div class='metric-card'>"
+        f"<div class='metric-label'># OF HOLDINGS</div>"
         f"<div class='metric-value'>{num_holdings:,}</div>"
-        "<div class='metric-sub'>Unique securities in this Wave</div>"
-        "</div>",
+        f"<div class='metric-sub'>Unique securities in this Wave</div>"
+        f"</div>",
         unsafe_allow_html=True,
     )
 
 with m3:
     st.markdown(
-        "<div class='metric-card'>"
-        "<div class='metric-label'>LARGEST POSITION</div>"
+        f"<div class='metric-card'>"
+        f"<div class='metric-label'>LARGEST POSITION</div>"
         f"<div class='metric-value'>{largest_position:0.2f}%</div>"
-        "<div class='metric-sub'>Single-name weight</div>"
-        "</div>",
+        f"<div class='metric-sub'>Single-name weight</div>"
+        f"</div>",
         unsafe_allow_html=True,
     )
 
 with m4:
     st.markdown(
-        "<div class='metric-card'>"
-        "<div class='metric-label'>TOP 10 CONCENTRATION</div>"
+        f"<div class='metric-card'>"
+        f"<div class='metric-label'>TOP 10 CONCENTRATION</div>"
         f"<div class='metric-value'>{top10_conc:0.2f}%</div>"
-        "<div class='metric-sub'>Sum of top 10 weights</div>"
-        "</div>",
+        f"<div class='metric-sub'>Sum of top 10 weights</div>"
+        f"</div>",
         unsafe_allow_html=True,
     )
 
 st.markdown("")
 
 # ---------------------------------------------------------
-# First row: Top holdings + Alpha vs Index + Full allocation
+# Row 1: Top holdings + Alpha vs Index + Full allocation
 # ---------------------------------------------------------
 c1, c2, c3 = st.columns([1.1, 1.1, 1.4])
 
-# ---- Left: Top holdings table ----
+# ----- Top holdings table -----
 with c1:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Top Holdings</div>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='section-caption'>Sorted by weight in the Wave. "
+        "<div class='section-caption'>Sorted by Wave weight. "
         "Tickers link out to live research.</div>",
         unsafe_allow_html=True,
     )
 
-    min_rows = 5
-    max_rows_allowed = min(50, max(min_rows, num_holdings))
-    default_rows = min(20, max_rows_allowed)
+    if num_holdings <= 5:
+        top_df = df.sort_values("Weight_pct", ascending=False)
+    else:
+        max_rows = min(50, num_holdings)
+        default_rows = min(20, max_rows)
+        rows = st.slider("Rows", 5, max_rows, default_rows, key="top_rows")
+        top_df = df.sort_values("Weight_pct", ascending=False).head(rows)
 
-    rows = st.slider(
-        "Rows",
-        min_rows,
-        max_rows_allowed,
-        default_rows,
-        key="top_rows",
-    )
-
-    top_df = df.sort_values("Weight_pct", ascending=False).head(rows).copy()
-    view = pd.DataFrame(
+    table_view = pd.DataFrame(
         {
             "Ticker": [ticker_link(t) for t in top_df["Ticker"]],
             "Price": top_df["Price"].round(2),
@@ -478,31 +459,27 @@ with c1:
             "Weight_%": top_df["Weight_pct"].round(3),
         }
     )
-    st.markdown(view.to_markdown(index=False), unsafe_allow_html=True)
+    st.markdown(table_view.to_markdown(index=False), unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ---- Middle: Allocation Alpha vs Index ----
+# ----- Allocation Alpha vs Index -----
 with c2:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='section-title'>Allocation Alpha vs Index</div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown("<div class='section-title'>Allocation Alpha vs Index</div>", unsafe_allow_html=True)
 
     if "Index_Weight" not in df.columns:
         st.markdown(
             "<div class='section-caption'>Add an `Index_Weight` column to your CSV "
-            "to see overweight / underweight vs benchmark.</div>",
+            "to view overweight / underweight vs benchmark.</div>",
             unsafe_allow_html=True,
         )
-        st.info("No `Index_Weight` found in CSV. Skipping alpha chart.")
+        st.info("No `Index_Weight` column found. Skipping alpha chart.")
     else:
         st.markdown(
             "<div class='section-caption'>Positive bars = overweight vs index. "
             "Negative bars = underweight.</div>",
             unsafe_allow_html=True,
         )
-
         alpha_df = df.copy()
         alpha_df["Active_pct"] = alpha_df["Weight_pct"] - alpha_df["Index_Weight"]
         alpha_top = alpha_df.reindex(
@@ -537,16 +514,13 @@ with c2:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ---- Right: Full Wave Allocation ----
+# ----- Full Wave Allocation -----
 with c3:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='section-title'>Full Wave Allocation</div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown("<div class='section-title'>Full Wave Allocation</div>", unsafe_allow_html=True)
     st.markdown(
         "<div class='section-caption'>Each bar is a holding’s % weight in the Wave "
-        "(top 150 shown).</div>",
+        "(top 150 holdings shown).</div>",
         unsafe_allow_html=True,
     )
 
@@ -556,7 +530,11 @@ with c3:
         .mark_bar(color=ACCENT_SOFT)
         .encode(
             x=alt.X("Ticker:N", sort=None, title=None),
-            y=alt.Y("Weight_pct:Q", title="% of Wave", axis=alt.Axis(format=".1f")),
+            y=alt.Y(
+                "Weight_pct:Q",
+                title="% of Wave",
+                axis=alt.Axis(format=".1f"),
+            ),
             tooltip=[
                 alt.Tooltip("Ticker:N"),
                 alt.Tooltip("Weight_pct:Q", title="Weight", format=".2f"),
@@ -571,11 +549,11 @@ with c3:
 st.markdown("")
 
 # ---------------------------------------------------------
-# Second row: Top 10, Alpha heatmap, Largest positions
+# Row 2: Top 10, Alpha heatmap, Largest positions
 # ---------------------------------------------------------
 c4, c5, c6 = st.columns([1, 1.2, 1])
 
-# ---- Top 10 by weight ----
+# ----- Top 10 by weight -----
 with c4:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Top 10 by Weight</div>", unsafe_allow_html=True)
@@ -586,7 +564,11 @@ with c4:
         .mark_bar(color=ACCENT)
         .encode(
             x=alt.X("Ticker:N", sort=None, title=None),
-            y=alt.Y("Weight_pct:Q", title="Weight (%)", axis=alt.Axis(format=".1f")),
+            y=alt.Y(
+                "Weight_pct:Q",
+                title="Weight (%)",
+                axis=alt.Axis(format=".1f"),
+            ),
             tooltip=[
                 alt.Tooltip("Ticker:N"),
                 alt.Tooltip("Weight_pct:Q", title="Weight", format=".2f"),
@@ -598,27 +580,26 @@ with c4:
     st.altair_chart(top10_chart, use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ---- Alpha heatmap ----
+# ----- Alpha “heatmap” (bar) -----
 with c5:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Alpha Heatmap (Top 50)</div>", unsafe_allow_html=True)
 
     if "Index_Weight" not in df.columns:
         st.markdown(
-            "<div class='section-caption'>Add `Index_Weight` to unlock alpha heatmap.</div>",
+            "<div class='section-caption'>Add `Index_Weight` to unlock the alpha heatmap.</div>",
             unsafe_allow_html=True,
         )
-        st.info("No `Index_Weight` found in CSV. Skipping heatmap.")
+        st.info("No `Index_Weight` column found. Skipping heatmap.")
     else:
         st.markdown(
-            "<div class='section-caption'>Sorted by absolute active weight "
-            "(over / under weight).</div>",
+            "<div class='section-caption'>Sorted by absolute active weight (over / under index).</div>",
             unsafe_allow_html=True,
         )
-        alpha_df = df.copy()
-        alpha_df["Active_pct"] = alpha_df["Weight_pct"] - alpha_df["Index_Weight"]
-        heat_df = alpha_df.reindex(
-            alpha_df["Active_pct"].abs().sort_values(ascending=False).head(50).index
+        alpha_df2 = df.copy()
+        alpha_df2["Active_pct"] = alpha_df2["Weight_pct"] - alpha_df2["Index_Weight"]
+        heat_df = alpha_df2.reindex(
+            alpha_df2["Active_pct"].abs().sort_values(ascending=False).head(50).index
         )
 
         heat_chart = (
@@ -628,7 +609,7 @@ with c5:
                 x=alt.X("Ticker:N", sort=None, title=None),
                 y=alt.Y(
                     "Active_pct:Q",
-                    title="Active vs Index",
+                    title="Active vs Index (pct)",
                     axis=alt.Axis(format=".1f"),
                 ),
                 color=alt.condition(
@@ -649,7 +630,7 @@ with c5:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ---- Largest positions table ----
+# ----- Largest positions table -----
 with c6:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Largest Positions (Table)</div>", unsafe_allow_html=True)
@@ -667,97 +648,6 @@ with c6:
     )
     st.markdown(big_view.to_markdown(index=False), unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# Optional: activity / trade log
-# ---------------------------------------------------------
-if trade_file is not None:
-    st.markdown("---")
-    st.markdown(
-        "<div class='section-title'>Recent Activity / Trade Log</div>",
-        unsafe_allow_html=True,
-    )
-
-    try:
-        trades_raw = pd.read_csv(trade_file)
-    except Exception as e:
-        st.error(f"Error reading trade log CSV: {e}")
-    else:
-        trades_raw.columns = [c.strip().replace(" ", "_") for c in trades_raw.columns]
-        needed_trade_cols = ["Timestamp", "Wave", "Ticker", "Side", "Quantity", "Price"]
-        missing_trades = [c for c in needed_trade_cols if c not in trades_raw.columns]
-
-        if missing_trades:
-            st.error(
-                "Trade log missing columns: "
-                + ", ".join(missing_trades)
-                + ". Expected: Timestamp, Wave, Ticker, Side, Quantity, Price "
-                "(+ optional Dollar_Amount)."
-            )
-        else:
-            trades = trades_raw.copy()
-            trades = trades[trades["Wave"].str.lower() == wave_key.lower()]
-
-            if trades.empty:
-                st.info("No trades found in the log for this Wave.")
-            else:
-                trades["Timestamp"] = pd.to_datetime(trades["Timestamp"], errors="coerce")
-                trades["Quantity"] = pd.to_numeric(trades["Quantity"], errors="coerce")
-                trades["Price"] = pd.to_numeric(trades["Price"], errors="coerce")
-
-                if "Dollar_Amount" not in trades.columns:
-                    trades["Dollar_Amount"] = trades["Quantity"] * trades["Price"]
-
-                trades = trades.dropna(subset=["Timestamp", "Ticker"])
-                trades = trades.sort_values("Timestamp", ascending=False)
-
-                recent = trades[
-                    trades["Timestamp"] >= trades["Timestamp"].max() - pd.Timedelta(days=30)
-                ].copy()
-
-                if not recent.empty:
-                    recent["Date"] = recent["Timestamp"].dt.date
-                    recent["SignedAmount"] = np.where(
-                        recent["Side"].str.upper().isin(["SELL", "TRIM"]),
-                        -recent["Dollar_Amount"],
-                        recent["Dollar_Amount"],
-                    )
-                    daily = recent.groupby("Date", as_index=False)["SignedAmount"].sum()
-
-                    flow_chart = (
-                        base_chart(daily)
-                        .mark_bar()
-                        .encode(
-                            x=alt.X("Date:T", title=None),
-                            y=alt.Y(
-                                "SignedAmount:Q",
-                                title="Net traded (USD)",
-                                axis=alt.Axis(format="$,.0f"),
-                            ),
-                            color=alt.condition(
-                                "datum.SignedAmount >= 0",
-                                alt.value(ACCENT),
-                                alt.value("#F97373"),
-                            ),
-                            tooltip=[
-                                alt.Tooltip("Date:T"),
-                                alt.Tooltip("SignedAmount:Q", title="Net traded", format="$,.0f"),
-                            ],
-                        )
-                        .properties(height=220, title="Net trading flow (last 30 days)")
-                    )
-                    st.altair_chart(flow_chart, use_container_width=True)
-
-                st.markdown(
-                    "<div class='section-caption'>Most recent trades for this Wave.</div>",
-                    unsafe_allow_html=True,
-                )
-                log = trades.head(50).copy()
-                log_view = log[
-                    ["Timestamp", "Ticker", "Side", "Quantity", "Price", "Dollar_Amount"]
-                ]
-                log_view["Ticker"] = [ticker_link(t) for t in log_view["Ticker"]]
-                st.markdown(log_view.to_markdown(index=False), unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # Footer
