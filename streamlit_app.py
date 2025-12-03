@@ -9,13 +9,17 @@ import altair as alt
 @st.cache_data
 def normalize_columns(df):
     """Normalize column names to use underscores instead of spaces/dashes."""
+    # Create a copy to avoid modifying the original DataFrame
     df = df.copy()
     df.columns = [c.strip().replace(" ", "_").replace("-", "_") for c in df.columns]
     return df
 
 @st.cache_data
 def compute_dataframe(df, ticker_col, price_col, dollar_col, weight_col, index_weight_col):
-    """Process and aggregate dataframe by ticker with caching."""
+    """Process and aggregate dataframe by ticker with caching.
+    
+    Cache key includes all parameters, so different column mappings will be cached separately.
+    """
     # Build working dataframe with standard names
     rename_dict = {
         ticker_col: "Ticker",
@@ -365,8 +369,6 @@ if st.session_state.last_file_id != current_file_id:
 
 try:
     raw_df = pd.read_csv(uploaded_file)
-    if not st.session_state.validated:
-        st.session_state.validated = True
 except Exception as e:
     st.error(f"Error reading CSV: {e}")
     st.stop()
@@ -418,6 +420,10 @@ total_nav = df["Dollar_Alloc"].sum()
 if total_nav <= 0:
     st.error("Total NAV calculated from Dollar_Alloc is not positive. Check your CSV.")
     st.stop()
+
+# Mark as validated after successful processing
+if not st.session_state.validated:
+    st.session_state.validated = True
 
 num_holdings = df["Ticker"].nunique()
 largest_position = df["Weight_pct"].max()
