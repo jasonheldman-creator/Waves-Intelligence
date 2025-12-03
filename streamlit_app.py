@@ -2,23 +2,116 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# ------------------ PAGE CONFIG ------------------ #
+# ============== BRAND COLORS & GLOBAL STYLES ============== #
+BRAND_BG = "#050516"
+PANEL_BG = "#0B0F1A"
+PRIMARY = "#00FFA7"   # WAVES neon green
+ACCENT = "#4DE2FA"    # soft teal/blue accent
+TEXT_MAIN = "#F5F7FF"
+TEXT_MUTED = "#A0AEC0"
+
 st.set_page_config(
-    page_title="WAVES Intelligence™ — S&P 500 Wave Console",
+    page_title="WAVES Intelligence™ — S&P 500 Wave Alpha Console",
     layout="wide"
 )
 
-# ------------------ HEADER ------------------ #
+# Inject custom CSS for branding
 st.markdown(
-    """
-    <h1 style="color:#00FFA7;margin-bottom:0;">WAVES INTELLIGENCE™</h1>
-    <h3 style="color:#CCCCCC;margin-top:4px;">S&P 500 Wave — Live Portfolio Console</h3>
+    f"""
+    <style>
+    /* App background */
+    [data-testid="stAppViewContainer"] {{
+        background: radial-gradient(circle at top left, #101628 0, {BRAND_BG} 55%);
+    }}
+    [data-testid="stHeader"] {{
+        background: transparent;
+    }}
+    .block-container {{
+        padding-top: 1.2rem;
+        padding-bottom: 1.5rem;
+        max-width: 1400px;
+    }}
+
+    /* Typography */
+    h1, h2, h3, h4, h5, h6 {{
+        color: {TEXT_MAIN};
+        font-family: -apple-system, system-ui, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+    }}
+    p, span, div {{
+        font-family: -apple-system, system-ui, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }}
+
+    /* Metric strip */
+    [data-testid="stMetric"] {{
+        background: linear-gradient(135deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));
+        padding: 14px 18px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,0.06);
+    }}
+    [data-testid="stMetric"] label {{
+        color: {TEXT_MUTED};
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }}
+    [data-testid="stMetric"] div[data-testid="stMetricValue"] {{
+        color: {TEXT_MAIN};
+        font-size: 1.2rem;
+        font-weight: 600;
+    }}
+
+    /* Cards (dataframes & charts containers) */
+    .stDataFrame, .stPlotlyChart, .plot-container, .stAltairChart {{
+        border-radius: 14px !important;
+    }}
+
+    /* Slider label color */
+    .stSlider > div > div > div > label {{
+        color: {TEXT_MUTED};
+    }}
+
+    /* Section headings */
+    .section-title {{
+        font-size: 1.0rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: {TEXT_MUTED};
+        margin-bottom: 0.25rem;
+    }}
+    .section-subtitle {{
+        font-size: 0.8rem;
+        color: {TEXT_MUTED};
+        margin-bottom: 0.75rem;
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ============== HEADER ============== #
+st.markdown(
+    f"""
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:0.75rem;">
+        <div>
+            <div style="font-size:0.8rem;letter-spacing:0.22em;text-transform:uppercase;color:{TEXT_MUTED};">
+                POWERED BY WAVES INTELLIGENCE™
+            </div>
+            <div style="font-size:1.8rem;font-weight:650;color:{TEXT_MAIN};margin-top:4px;">
+                S&amp;P 500 Wave &mdash; Alpha Console
+            </div>
+        </div>
+        <div style="text-align:right;font-size:0.8rem;color:{TEXT_MUTED};">
+            <span style="color:{PRIMARY};font-weight:500;">Live allocation view</span><br/>
+            Upload latest SP500_PORTFOLIO_FINAL snapshot
+        </div>
+    </div>
     """,
     unsafe_allow_html=True,
 )
 st.markdown("---")
 
-# ------------------ FILE UPLOAD ------------------ #
+# ============== FILE UPLOAD ============== #
 uploaded_file = st.file_uploader(
     "Upload SP500_PORTFOLIO_FINAL.csv",
     type="csv",
@@ -26,10 +119,10 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is None:
-    st.info("👆 Upload your **SP500_PORTFOLIO_FINAL.csv** to see the dashboard.")
+    st.info("👆 Upload your **SP500_PORTFOLIO_FINAL.csv** to see the WAVES Alpha console.")
     st.stop()
 
-# ------------------ LOAD DATA ------------------ #
+# ============== LOAD DATA ============== #
 try:
     df = pd.read_csv(uploaded_file)
 except Exception as e:
@@ -58,7 +151,7 @@ if "Dollar_Alloc" not in df.columns:
 numeric_cols = df.select_dtypes(include=[np.number]).columns
 df[numeric_cols] = df[numeric_cols].fillna(0)
 
-# ------------------ CORE METRICS ------------------ #
+# ============== CORE METRICS ============== #
 total_nav = float(df["Dollar_Alloc"].sum())
 if total_nav <= 0:
     st.error("Total NAV is 0 or negative. Check 'Dollar_Alloc' values in your CSV.")
@@ -76,7 +169,7 @@ largest_weight = float(df["Weight_pct"].max())
 # Top 10 concentration
 top10_conc = float(df["Weight_pct"].nlargest(10).sum())
 
-# ------------------ INDEX VS WAVE ("ALPHA") ------------------ #
+# ============== INDEX VS WAVE ("ALPHA") ============== #
 if "Index_Weight" in df.columns:
     idx_raw = df["Index_Weight"].copy()
 
@@ -96,7 +189,7 @@ else:
 # Sort by portfolio weight for all downstream displays
 df = df.sort_values("Weight_pct", ascending=False).reset_index(drop=True)
 
-# ------------------ TOP KPI STRIP ------------------ #
+# ============== TOP KPI STRIP ============== #
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
 with kpi1:
@@ -111,14 +204,18 @@ with kpi3:
 with kpi4:
     st.metric("Top 10 Concentration", f"{top10_conc:.2f}%")
 
-st.markdown("---")
+st.markdown("")
 
-# ------------------ LAYOUT: 3 COLUMNS ------------------ #
+# ============== 3-COLUMN MAIN LAYOUT ============== #
 left, mid, right = st.columns([1.4, 1.4, 1.8])
 
 # ---------- LEFT: TOP HOLDINGS TABLE ---------- #
 with left:
-    st.markdown("### Top Holdings")
+    st.markdown(f"<div class='section-title'>Top Holdings</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='section-subtitle'>Sorted by Wave weight; slider controls rows shown.</div>",
+        unsafe_allow_html=True,
+    )
 
     max_rows = min(50, len(df))
     rows = st.slider("Rows", min_value=5, max_value=max_rows, value=min(20, max_rows), step=1)
@@ -139,13 +236,21 @@ with left:
         top_table,
         use_container_width=True,
         hide_index=True,
-        height=400,
+        height=430,
     )
 
 # ---------- MIDDLE: ALPHA + TOP 10 + BUCKETS ---------- #
 with mid:
     # Allocation Alpha first
-    st.markdown("### Allocation Alpha vs S&P 500 Index")
+    st.markdown(
+        "<div class='section-title'>Allocation Alpha vs S&amp;P 500 Index</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div class='section-subtitle'>Positive bars = overweight vs index. Negative bars = underweight.</div>",
+        unsafe_allow_html=True,
+    )
+
     if has_alpha and df["Active_Weight_pct"].abs().sum() > 0:
         alpha_df = (
             df[["Ticker", "Active_Weight_pct"]]
@@ -153,16 +258,27 @@ with mid:
             .head(15)
             .set_index("Ticker")
         )
-        st.caption("Positive bars = overweight vs index. Negative bars = underweight.")
         st.bar_chart(alpha_df, use_container_width=True, height=260)
     else:
         st.info("Index_Weight column not found in CSV, so allocation alpha cannot be computed.")
 
-    st.markdown("### Top 10 by Weight")
-    top10 = df.head(10)[["Ticker", "Weight_pct"]].set_index("Ticker")
-    st.bar_chart(top10, use_container_width=True, height=260)
+    st.markdown(
+        "<div class='section-title' style='margin-top:0.75rem;'>Top 10 by Wave Weight</div>",
+        unsafe_allow_html=True,
+    )
 
-    st.markdown("### Weight Buckets")
+    top10 = df.head(10)[["Ticker", "Weight_pct"]].set_index("Ticker")
+    st.bar_chart(top10, use_container_width=True, height=240)
+
+    st.markdown(
+        "<div class='section-title' style='margin-top:0.75rem;'>Weight Buckets</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div class='section-subtitle'>Core ≥ 2%, Satellites 0.5–2%, Micro &lt; 0.5% by Wave weight.</div>",
+        unsafe_allow_html=True,
+    )
+
     core = df[df["Weight_pct"] >= 2.0]["Weight_pct"].sum()
     satellite = df[(df["Weight_pct"] >= 0.5) & (df["Weight_pct"] < 2.0)]["Weight_pct"].sum()
     micro = df[df["Weight_pct"] < 0.5]["Weight_pct"].sum()
@@ -178,14 +294,21 @@ with mid:
 
 # ---------- RIGHT: FULL ALLOCATION + LARGEST POSITIONS ---------- #
 with right:
-    st.markdown("### Full Wave Allocation")
-    st.caption("Each bar is a holding’s % weight in the S&P 500 Wave (top 150 shown).")
+    st.markdown("<div class='section-title'>Full Wave Allocation</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='section-subtitle'>Each bar is a holding’s % weight in the S&amp;P 500 Wave (top 150 shown).</div>",
+        unsafe_allow_html=True,
+    )
 
     max_full = min(150, len(df))
     full_df = df.head(max_full)[["Ticker", "Weight_pct"]].set_index("Ticker")
     st.bar_chart(full_df, use_container_width=True, height=280)
 
-    st.markdown("### Largest Positions (Table)")
+    st.markdown(
+        "<div class='section-title' style='margin-top:0.75rem;'>Largest Positions (Table)</div>",
+        unsafe_allow_html=True,
+    )
+
     largest_df = df.head(15)[["Ticker", "Weight_pct"]].copy()
     largest_df["Weight_pct"] = largest_df["Weight_pct"].map(lambda x: f"{x:.2f}%")
     st.dataframe(
@@ -194,7 +317,7 @@ with right:
         height=260,
     )
 
-# ------------------ FOOTER / DISCLAIMER ------------------ #
+# ============== FOOTER / DISCLAIMER ============== #
 st.markdown("---")
 st.caption(
     """
