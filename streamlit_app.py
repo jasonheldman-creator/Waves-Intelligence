@@ -300,13 +300,14 @@ if uploaded_file is None:
 # ---------------------------------------------------------
 try:
     raw_df = pd.read_csv(uploaded_file)
+    raw_df.columns = [c.strip().replace(" ", "_") for c in raw_df.columns]
 except Exception as e:
     st.error(f"Error reading CSV: {e}")
     st.stop()
 
-# Normalize column names (lowercase & underscores)
+# Normalize column names (additional processing for hyphens)
 raw_df.columns = [
-    c.strip().replace(" ", "_").replace("-", "_") for c in raw_df.columns
+    c.replace("-", "_") for c in raw_df.columns
 ]
 
 lower_cols = {c.lower(): c for c in raw_df.columns}
