@@ -372,6 +372,8 @@ if st.session_state.last_file_id != current_file_id:
     st.session_state.last_file_id = current_file_id
     
     try:
+        # Reset stream position before reading
+        uploaded_file.seek(0)
         raw_df = pd.read_csv(uploaded_file)
     except Exception as e:
         st.error(f"Error reading CSV: {e}")
@@ -382,7 +384,7 @@ if st.session_state.last_file_id != current_file_id:
     # Store in session state for reuse
     st.session_state.raw_df = raw_df
 else:
-    # Reuse the dataframe from session state
+    # Reuse the dataframe from session state - no file I/O
     raw_df = st.session_state.raw_df
 
 lower_cols = {c.lower(): c for c in raw_df.columns}
@@ -470,7 +472,14 @@ else:
 # Chart helper for dark mode
 # ---------------------------------------------------------
 def base_chart(data: pd.DataFrame) -> alt.Chart:
-    """Create base chart with consistent dark mode styling."""
+    """Create base Altair chart with consistent dark mode styling.
+    
+    Args:
+        data: DataFrame to use for the chart
+        
+    Returns:
+        Configured Altair Chart object with dark theme applied
+    """
     return (
         alt.Chart(data, background=DARK_BG)
         .configure_axis(
